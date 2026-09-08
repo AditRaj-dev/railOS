@@ -115,16 +115,22 @@ function buildSegmentLayers(
         return [];
       },
       getColor: (d: RailwaySegment): [number, number, number, number] => {
+        const isSelected = selection?.sectionId === d.sectionId;
+        if (!d.planningEnabled) {
+          // Overview-only demo geometry carries illustrative, not live, metrics —
+          // render it as a neutral reference line rather than risk-coloring it.
+          return [100, 116, 139, isSelected ? 220 : 140];
+        }
         const metric = getSegmentMetric(d, mode);
         const hexColor = config.getColor(metric);
         const rgb = hexColor.match(/\w\w/g)?.map((x) => parseInt(x, 16)) || [0, 0, 0];
-        const isSelected = selection?.sectionId === d.sectionId;
         return [rgb[0], rgb[1], rgb[2], isSelected ? 255 : 220];
       },
       getWidth: (d: RailwaySegment) => {
+        const isSelected = selection?.sectionId === d.sectionId;
+        if (!d.planningEnabled) return isSelected ? 5 : 3;
         const metric = getSegmentMetric(d, mode);
         const baseWidth = config.getWidth(metric);
-        const isSelected = selection?.sectionId === d.sectionId;
         return isSelected ? baseWidth + 3 : baseWidth;
       },
       widthUnits: 'pixels',
@@ -181,16 +187,21 @@ function buildSectionLayers(
         return [];
       },
       getColor: (d: RailwaySection): [number, number, number, number] => {
+        const isSelected = selection?.sectionId === d.sectionId;
+        if (!d.planningEnabled) {
+          // Overview-only demo section — no live metrics behind it, so no risk color.
+          return [100, 116, 139, isSelected ? 220 : 140];
+        }
         const metric = getMetricFromSection(d, mode);
         const hexColor = config.getColor(metric);
         const rgb = hexColor.match(/\w\w/g)?.map((x) => parseInt(x, 16)) || [0, 0, 0];
-        const isSelected = selection?.sectionId === d.sectionId;
         return [rgb[0], rgb[1], rgb[2], isSelected ? 255 : 200];
       },
       getWidth: (d: RailwaySection) => {
+        const isSelected = selection?.sectionId === d.sectionId;
+        if (!d.planningEnabled) return isSelected ? 4 : 2;
         const metric = getMetricFromSection(d, mode);
         const baseWidth = config.getWidth(metric);
-        const isSelected = selection?.sectionId === d.sectionId;
         return isSelected ? baseWidth + 2 : baseWidth;
       },
       widthUnits: 'pixels',
@@ -285,7 +296,9 @@ function buildStationLayers(
 }
 
 function buildDefectLayer(segments: RailwaySegment[]): Layer[] {
-  const defects = segments.filter((s) => s.maintenancePressure > 60);
+  // Overview-only segments carry illustrative maintenancePressure numbers with no
+  // real Defect records behind them — never synthesize a defect marker from those.
+  const defects = segments.filter((s) => s.planningEnabled && s.maintenancePressure > 60);
 
   return [
     new ScatterplotLayer({

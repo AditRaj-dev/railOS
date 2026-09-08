@@ -114,11 +114,18 @@ export const DigitalTwinView: React.FC = () => {
 
             {sections.map((sec) => {
               const isSelected = sec.sectionId === selectedSection.sectionId;
+              // Overview-only sections carry no live telemetry — their metrics are
+              // unset defaults (0 pending, 100 availability), not a verified "all clear".
+              // Render them as a distinct neutral state instead of a false "Normal".
+              const isOverviewOnly = !sec.planningEnabled;
               const status = deriveSectionStatus(sec.metrics.criticalDefectCount, sec.metrics.pendingMaintenanceCount);
 
               let statusBorder = 'border-emerald-500/80 text-emerald-400';
               let statusDot = 'bg-emerald-400';
-              if (status === 'RESTRICTED') {
+              if (isOverviewOnly) {
+                statusBorder = 'border-slate-600 text-slate-400';
+                statusDot = 'bg-slate-500';
+              } else if (status === 'RESTRICTED') {
                 statusBorder = 'border-red-500 text-red-400 animate-pulse';
                 statusDot = 'bg-red-500';
               } else if (status === 'CAUTION') {
@@ -144,21 +151,29 @@ export const DigitalTwinView: React.FC = () => {
                   }`}>
                     <div className="flex items-center justify-between font-bold text-slate-200 mb-1">
                       <span>{sec.code}</span>
-                      <span className={sec.metrics.trafficPressure > 100 ? 'text-amber-400' : 'text-slate-300'}>
-                        {Math.round(sec.metrics.trafficPressure)}% Traffic
-                      </span>
+                      {!isOverviewOnly && (
+                        <span className={sec.metrics.trafficPressure > 100 ? 'text-amber-400' : 'text-slate-300'}>
+                          {Math.round(sec.metrics.trafficPressure)}% Traffic
+                        </span>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-slate-800 text-[10px] text-center">
-                      <div className="bg-amber-950/30 p-0.5 rounded border border-amber-800/30">
-                        <span className="block text-amber-400 font-bold">{sec.metrics.pendingMaintenanceCount}</span>
-                        <span className="text-[9px] text-slate-400">PENDING</span>
+                    {isOverviewOnly ? (
+                      <div className="pt-1.5 border-t border-slate-800 text-[10px] text-center text-slate-500 italic">
+                        Overview only — no live telemetry
                       </div>
-                      <div className="bg-red-950/30 p-0.5 rounded border border-red-800/30">
-                        <span className="block text-red-400 font-bold">{sec.metrics.criticalDefectCount}</span>
-                        <span className="text-[9px] text-slate-400">CRITICAL</span>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-slate-800 text-[10px] text-center">
+                        <div className="bg-amber-950/30 p-0.5 rounded border border-amber-800/30">
+                          <span className="block text-amber-400 font-bold">{sec.metrics.pendingMaintenanceCount}</span>
+                          <span className="text-[9px] text-slate-400">PENDING</span>
+                        </div>
+                        <div className="bg-red-950/30 p-0.5 rounded border border-red-800/30">
+                          <span className="block text-red-400 font-bold">{sec.metrics.criticalDefectCount}</span>
+                          <span className="text-[9px] text-slate-400">CRITICAL</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               );
