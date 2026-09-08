@@ -114,6 +114,21 @@ export function AppShell({ children }: AppShellProps) {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
 
+  React.useEffect(() => {
+    // The nav list hides items the acting role can't use, but hiding a link
+    // doesn't stop a user from already being on that page — e.g. `/` always
+    // redirects to `/command-center` before any role is known, and switching
+    // roles via the dropdown doesn't otherwise navigate anywhere. Bounce to
+    // the first page this role's own nav actually offers.
+    const currentPageAllowed = NAV_ITEMS.some(
+      (item) => item.roles.includes(userRole) && isActive(item.href)
+    );
+    if (!currentPageAllowed && visibleNavItems.length > 0) {
+      router.replace(visibleNavItems[0].href);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole, pathname]);
+
   return (
     <div className="min-h-dvh bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col font-sans selection:bg-sky-500 selection:text-slate-950">
       {/* Top Navigation Bar */}
