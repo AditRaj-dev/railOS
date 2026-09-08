@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: railos-api
+    runtime: docker
+    dockerfilePath: Dockerfile.api
+    dockerContext: .
+    plan: free
+    healthCheckPath: /docs
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: RAILOS_STORAGE_BACKEND
+        value: postgres
+      - key: DATABASE_URL
+        sync: false # Set to your Neon PostgreSQL connection string
+      - key: RAILOS_JWT_SECRET
+        generateValue: true # Render will auto-generate a secure random secret
+      - key: RAILOS_CORS_ORIGINS
+        value: "https://*.vercel.app,http://localhost:3000"
+      - key: ENABLE_SYNTHETIC_AUTH
+        value: "true"
+      - key: NEON_STORAGE_BUCKET
+        sync: false
+      - key: NEON_STORAGE_KEY
+        sync: false
+      - key: NEON_STORAGE_SECRET
+        sync: false
+      - key: NEON_STORAGE_ENDPOINT
+        sync: false
