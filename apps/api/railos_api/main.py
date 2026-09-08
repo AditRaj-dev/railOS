@@ -15,12 +15,12 @@ from railos_data import geometry_intersects_bbox
 from railos_model import (
     Asset, AuthoritySignature, BlockBurst, BlockType, BlockWindow,
     CorrespondenceTest, Corridor, Defect, Dependency, Department,
-    FitnessCertificate, FormT351, GoodsForecast, MaintenanceTask,
+    EvidenceItem, FitnessCertificate, FormT351, GoodsForecast, MaintenanceTask,
     NetworkCatalog, ObjectiveProfile, PermitToWork, Plan, PlanStatus,
     Possession, PossessionState, PossessionTransition, ProtectionRecord,
     Resource, SanctionAuthority, SanctionChain, ScenarioWorld, Severity,
     SignatureDecision, TaskStatus, TaskType, Track, TrainMovement,
-    WorkExecutionStatus,
+    WorkExecutionStatus, WorkStep,
 )
 from .roles import OPERATIONAL_ROLES as VALID_ROLES, normalize_role
 from .possession import (
@@ -98,7 +98,7 @@ COLLECTIONS = (
     "windows", "resources", "dependencies", "plans", "plan_versions",
     "runs", "notifications", "idempotency", "emergencies", "assignments",
     "ingestion_records", "sanctions", "sanction_versions", "possessions",
-    "block_bursts",
+    "block_bursts", "evidence_items", "work_steps", "upload_sessions",
 )
 
 def camel(value: str) -> str:
@@ -214,6 +214,39 @@ class Repository:
         }
         self.horizon_minutes = world.horizonMinutes
         self.horizon_start_iso = world.horizonStartIso
+
+        # Demo field-evidence work steps for TSK-0001 (survives restarts via
+        # this repository, unlike the rest of FieldEvidenceState in
+        # evidence_routes.py which is session-scoped in-memory auth state).
+        self.work_steps = {
+            step.stepId: step for step in (
+                WorkStep(
+                    stepId="stp-101", taskId="TSK-0001", stepIndex=1,
+                    title="Pre-work Site Inspection & Ballast Profile",
+                    description="Photograph the initial ballast shoulder and check fishplate clearances.",
+                    requiresPhoto=True, requiresVideo=False,
+                    targetLatitude=28.6139, targetLongitude=77.2090, targetRadiusMeters=100.0,
+                    status=WorkExecutionStatus.READY,
+                ),
+                WorkStep(
+                    stepId="stp-102", taskId="TSK-0001", stepIndex=2,
+                    title="Tamping Machine Alignment & Depth Verification",
+                    description="Photograph tamper tines penetrating sleeper crib to prescribed depth.",
+                    requiresPhoto=True, requiresVideo=False,
+                    targetLatitude=28.6141, targetLongitude=77.2093, targetRadiusMeters=100.0,
+                    status=WorkExecutionStatus.READY,
+                ),
+                WorkStep(
+                    stepId="stp-103", taskId="TSK-0001", stepIndex=3,
+                    title="Post-Tamping Final Track Geometry Walkthrough",
+                    description="Continuous walkthrough video verifying cross-level, alignment, and track clear of equipment.",
+                    requiresPhoto=False, requiresVideo=True,
+                    targetLatitude=28.6140, targetLongitude=77.2091, targetRadiusMeters=100.0,
+                    status=WorkExecutionStatus.READY,
+                ),
+            )
+        }
+
         self.emit("DEMO_RESET", "demo", {
             "tasks": len(self.tasks), "defects": len(self.defects),
             "movements": len(self.trains), "windows": len(self.windows),
@@ -314,6 +347,7 @@ class PostgresRepository(Repository):
         "plans": Plan, "plan_versions": Plan,
         "sanctions": SanctionChain, "sanction_versions": SanctionChain,
         "possessions": Possession, "block_bursts": BlockBurst,
+        "evidence_items": EvidenceItem, "work_steps": WorkStep,
     }
 
     def __init__(self):

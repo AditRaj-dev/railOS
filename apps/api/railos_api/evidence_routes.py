@@ -55,13 +55,16 @@ verification_service = EvidenceVerificationService(object_store)
 # In-Memory State for Auth, Assignments, Evidence, and Work Steps
 # -----------------------------------------------------------------------------
 class FieldEvidenceState:
+    """Auth/assignment/demo state. Deliberately in-memory (session-scoped, not
+    durable): work_steps, evidence_items, and upload_sessions live in the
+    Postgres-backed `state` repository from main.py instead (see COLLECTIONS),
+    so evidence media metadata survives a process restart the same way tasks
+    and possessions do."""
+
     def __init__(self):
         self.users: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, dict[str, Any]] = {}  # token_hash -> token_info
         self.assignments: dict[str, list[str]] = {}  # user_id -> [section_code, ...]
-        self.work_steps: dict[str, list[WorkStep]] = {}  # task_id -> [WorkStep, ...]
-        self.evidence_items: dict[str, EvidenceItem] = {}  # evidence_id -> EvidenceItem
-        self.upload_sessions: dict[str, dict[str, Any]] = {}  # session_id -> session_info
         self.emergency_reports: dict[str, EmergencyReport] = {}  # report_id -> EmergencyReport
         self.idempotency: dict[str, Any] = {}
         self._seed()
@@ -93,52 +96,21 @@ class FieldEvidenceState:
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         self.assignments["sup-01"] = ["SEC_KRJ_SMQ", "GZB-ALJN", "NDLS-GZB"]
-
-        # Default sample work steps for demo tasks
-        self.work_steps["TSK-0001"] = [
-            WorkStep(
-                stepId="stp-101",
-                taskId="TSK-0001",
-                stepIndex=1,
-                title="Pre-work Site Inspection & Ballast Profile",
-                description="Photograph the initial ballast shoulder and check fishplate clearances.",
-                requiresPhoto=True,
-                requiresVideo=False,
-                targetLatitude=28.6139,
-                targetLongitude=77.2090,
-                targetRadiusMeters=100.0,
-                status=WorkExecutionStatus.READY,
-            ),
-            WorkStep(
-                stepId="stp-102",
-                taskId="TSK-0001",
-                stepIndex=2,
-                title="Tamping Machine Alignment & Depth Verification",
-                description="Photograph tamper tines penetrating sleeper crib to prescribed depth.",
-                requiresPhoto=True,
-                requiresVideo=False,
-                targetLatitude=28.6141,
-                targetLongitude=77.2093,
-                targetRadiusMeters=100.0,
-                status=WorkExecutionStatus.READY,
-            ),
-            WorkStep(
-                stepId="stp-103",
-                taskId="TSK-0001",
-                stepIndex=3,
-                title="Post-Tamping Final Track Geometry Walkthrough",
-                description="Continuous walkthrough video verifying cross-level, alignment, and track clear of equipment.",
-                requiresPhoto=False,
-                requiresVideo=True,
-                targetLatitude=28.6140,
-                targetLongitude=77.2091,
-                targetRadiusMeters=100.0,
-                status=WorkExecutionStatus.READY,
-            ),
-        ]
+        # Demo work steps for TSK-0001 are seeded by the Postgres-backed
+        # `state` repository (see Repository._seed in main.py) so they persist
+        # across restarts alongside evidence_items and upload_sessions.
 
 
 evidence_state = FieldEvidenceState()
+
+
+def _steps_for_task(state, task_id: str) -> list[WorkStep]:
+    """Work steps for a task, from the Postgres-backed state.work_steps
+    (flat dict keyed by stepId), ordered for display."""
+    return sorted(
+        (s for s in state.work_steps.values() if s.taskId == task_id),
+        key=lambda s: s.stepIndex,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -375,7 +347,7 @@ def get_my_assignments(
     for t in state.tasks.values():
         task_data = t.model_dump(by_alias=True, mode="json")
         task_id = task_data.get("taskId")
-        steps = evidence_state.work_steps.get(task_id, [])
+        steps = _steps_for_task(state, task_id)
 
         # Default fallback steps if none explicitly assigned
         if not steps:
@@ -402,7 +374,9 @@ def get_my_assignments(
                     targetRadiusMeters=100.0,
                 ),
             ]
-            evidence_state.work_steps[task_id] = steps
+            with state.transaction():
+                for step in steps:
+                    state.work_steps[step.stepId] = step
 
         task_data["steps"] = [s.model_dump(by_alias=True, mode="json") for s in steps]
         task_data["executionStatus"] = "IN_PROGRESS" if any(s.status != WorkExecutionStatus.READY for s in steps) else "READY"
@@ -467,7 +441,8 @@ def create_evidence_item(
         createdTimeUtc=datetime.now(timezone.utc).isoformat(),
         updatedTimeUtc=datetime.now(timezone.utc).isoformat(),
     )
-    evidence_state.evidence_items[item.evidenceId] = item
+    with state.transaction():
+        state.evidence_items[item.evidenceId] = item
 
     res = item.model_dump(by_alias=True, mode="json")
     if req.idempotency_key:
@@ -482,7 +457,9 @@ def initiate_upload(
     current_user: UserAccount = Depends(get_current_user),
 ):
     """Initiate resilient multipart upload session for original or proof media."""
-    item = evidence_state.evidence_items.get(evidence_id)
+    from .main import state
+
+    item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
 
@@ -502,7 +479,8 @@ def initiate_upload(
         "totalBytes": req.total_bytes,
         "status": "OPEN",
     }
-    evidence_state.upload_sessions[session_id] = session_data
+    with state.transaction():
+        state.upload_sessions[session_id] = session_data
 
     return {
         "sessionId": session_id,
@@ -522,7 +500,9 @@ def presign_part_upload(
     current_user: UserAccount = Depends(get_current_user),
 ):
     """Generate short-lived presigned URL for direct part upload."""
-    session = evidence_state.upload_sessions.get(session_id)
+    from .main import state
+
+    session = state.upload_sessions.get(session_id)
     if not session or session["evidenceId"] != evidence_id:
         raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
 
@@ -541,25 +521,29 @@ def complete_upload(
     current_user: UserAccount = Depends(get_current_user),
 ):
     """Complete multipart upload session and store file metadata."""
-    session = evidence_state.upload_sessions.get(req.session_id)
+    from .main import state
+
+    session = state.upload_sessions.get(req.session_id)
     if not session or session["evidenceId"] != evidence_id:
         raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
 
     parts_payload = [{"PartNumber": p.part_number, "ETag": p.etag} for p in req.parts]
     object_store.complete_multipart_upload(session["storageKey"], session["uploadId"], parts_payload)
-    session["status"] = "COMPLETED"
 
-    item = evidence_state.evidence_items[evidence_id]
-    if req.storage_kind == "ORIGINAL":
-        item.originalStorageKey = session["storageKey"]
-        item.originalSha256 = req.sha256
-        item.originalSizeBytes = req.size_bytes
-    else:
-        item.proofStorageKey = session["storageKey"]
-        item.proofSha256 = req.sha256
-        item.proofSizeBytes = req.size_bytes
+    with state.transaction():
+        session["status"] = "COMPLETED"
 
-    item.status = EvidenceStatus.UPLOADING
+        item = state.evidence_items[evidence_id]
+        if req.storage_kind == "ORIGINAL":
+            item.originalStorageKey = session["storageKey"]
+            item.originalSha256 = req.sha256
+            item.originalSizeBytes = req.size_bytes
+        else:
+            item.proofStorageKey = session["storageKey"]
+            item.proofSha256 = req.sha256
+            item.proofSizeBytes = req.size_bytes
+
+        item.status = EvidenceStatus.UPLOADING
     return {"status": "completed", "storageKey": session["storageKey"]}
 
 
@@ -570,7 +554,10 @@ def abort_upload(
     current_user: UserAccount = Depends(get_current_user),
 ):
     """Abort multipart upload session."""
-    session = evidence_state.upload_sessions.pop(session_id, None)
+    from .main import state
+
+    with state.transaction():
+        session = state.upload_sessions.pop(session_id, None)
     if session:
         object_store.abort_multipart_upload(session["storageKey"], session["uploadId"])
     return {"status": "aborted"}
@@ -585,11 +572,9 @@ def finalize_evidence(
     """Finalize evidence submission, enqueue/run durable verification, and sign manifest."""
     from .main import state
 
-    item = evidence_state.evidence_items.get(evidence_id)
+    item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
-
-    item.status = EvidenceStatus.VERIFYING
 
     # Find step target
     target_lat = 28.6139
@@ -597,7 +582,7 @@ def finalize_evidence(
     target_radius = 100.0
     section_code = "SEC_KRJ_SMQ"
 
-    steps = evidence_state.work_steps.get(item.taskId, [])
+    steps = _steps_for_task(state, item.taskId)
     target_step = next((s for s in steps if s.stepId == item.stepId), None)
     if target_step:
         target_lat = target_step.targetLatitude
@@ -613,29 +598,31 @@ def finalize_evidence(
         location_samples=req.location_samples,
         device_info=req.device_info,
     )
-    evidence_state.evidence_items[evidence_id] = verified_item
 
-    # Update step status if verified
-    if target_step:
-        if verified_item.status == EvidenceStatus.VERIFIED:
-            target_step.status = WorkExecutionStatus.COMPLETED
-            target_step.evidenceId = evidence_id
-            state.emit(
-                "TASK_STEP_COMPLETED",
-                target_step.stepId,
-                target_step.model_dump(by_alias=True, mode="json"),
-                actor=current_user.user_id,
-            )
-        elif verified_item.status == EvidenceStatus.FLAGGED_REVIEW:
-            target_step.status = WorkExecutionStatus.COMPLETED_PENDING_EVIDENCE
-            target_step.evidenceId = evidence_id
-            state.emit(
-                "EVIDENCE_FLAGGED",
-                evidence_id,
-                verified_item.model_dump(by_alias=True, mode="json"),
-                actor=current_user.user_id,
-                reason=verified_item.reviewNotes or "Geospatial or media integrity discrepancy",
-            )
+    with state.transaction():
+        state.evidence_items[evidence_id] = verified_item
+
+        # Update step status if verified
+        if target_step:
+            if verified_item.status == EvidenceStatus.VERIFIED:
+                target_step.status = WorkExecutionStatus.COMPLETED
+                target_step.evidenceId = evidence_id
+                state.emit(
+                    "TASK_STEP_COMPLETED",
+                    target_step.stepId,
+                    target_step.model_dump(by_alias=True, mode="json"),
+                    actor=current_user.user_id,
+                )
+            elif verified_item.status == EvidenceStatus.FLAGGED_REVIEW:
+                target_step.status = WorkExecutionStatus.COMPLETED_PENDING_EVIDENCE
+                target_step.evidenceId = evidence_id
+                state.emit(
+                    "EVIDENCE_FLAGGED",
+                    evidence_id,
+                    verified_item.model_dump(by_alias=True, mode="json"),
+                    actor=current_user.user_id,
+                    reason=verified_item.reviewNotes or "Geospatial or media integrity discrepancy",
+                )
 
     return verified_item.model_dump(by_alias=True, mode="json")
 
@@ -645,7 +632,9 @@ def get_evidence_details(
     evidence_id: str, current_user: UserAccount = Depends(get_current_user)
 ):
     """Retrieve evidence details with signed media preview URLs and signature status."""
-    item = evidence_state.evidence_items.get(evidence_id)
+    from .main import state
+
+    item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
 
@@ -665,8 +654,10 @@ def list_evidence(
     current_user: UserAccount = Depends(get_current_user),
 ):
     """List evidence items with optional filters."""
+    from .main import state
+
     results = []
-    for item in evidence_state.evidence_items.values():
+    for item in state.evidence_items.values():
         if status and item.status.value != status:
             continue
         if task_id and item.taskId != task_id:
@@ -688,37 +679,38 @@ def review_flagged_evidence(
     """Control Officer reviews flagged evidence: ACCEPT_EXCEPTION or REJECT."""
     from .main import state
 
-    item = evidence_state.evidence_items.get(evidence_id)
+    item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence not found"})
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    if req.decision == "ACCEPT":
-        item.status = EvidenceStatus.ACCEPTED_EXCEPTION
-    else:
-        item.status = EvidenceStatus.REJECTED
 
-    item.reviewerId = current_user.user_id
-    item.reviewNotes = req.review_notes
-    item.reviewedAt = now_iso
-    item.updatedTimeUtc = now_iso
-
-    # Update associated task step
-    steps = evidence_state.work_steps.get(item.taskId, [])
-    step = next((s for s in steps if s.stepId == item.stepId), None)
-    if step:
-        if item.status == EvidenceStatus.ACCEPTED_EXCEPTION:
-            step.status = WorkExecutionStatus.COMPLETED
+    with state.transaction():
+        if req.decision == "ACCEPT":
+            item.status = EvidenceStatus.ACCEPTED_EXCEPTION
         else:
-            step.status = WorkExecutionStatus.READY  # Retake required
+            item.status = EvidenceStatus.REJECTED
 
-    state.emit(
-        "EVIDENCE_REVIEWED",
-        evidence_id,
-        item.model_dump(by_alias=True, mode="json"),
-        actor=current_user.user_id,
-        reason=f"Control officer decision: {req.decision}. Notes: {req.review_notes}",
-    )
+        item.reviewerId = current_user.user_id
+        item.reviewNotes = req.review_notes
+        item.reviewedAt = now_iso
+        item.updatedTimeUtc = now_iso
+
+        # Update associated task step
+        step = state.work_steps.get(item.stepId)
+        if step:
+            if item.status == EvidenceStatus.ACCEPTED_EXCEPTION:
+                step.status = WorkExecutionStatus.COMPLETED
+            else:
+                step.status = WorkExecutionStatus.READY  # Retake required
+
+        state.emit(
+            "EVIDENCE_REVIEWED",
+            evidence_id,
+            item.model_dump(by_alias=True, mode="json"),
+            actor=current_user.user_id,
+            reason=f"Control officer decision: {req.decision}. Notes: {req.review_notes}",
+        )
 
     return item.model_dump(by_alias=True, mode="json")
 

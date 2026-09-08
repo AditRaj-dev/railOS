@@ -2,7 +2,8 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from railos_api.evidence_routes import evidence_state, object_store
+from railos_api import main as railos_main
+from railos_api.evidence_routes import object_store
 from railos_api.main import app
 from railos_api.storage import MemoryObjectStore
 from railos_model import EvidenceKind, EvidenceStatus, GeoVerdict, ManifestSigner, compute_sha256_bytes
@@ -235,7 +236,7 @@ def test_evidence_lifecycle_multipart_and_verification():
     assert result["canonicalManifest"] is not None
 
     # Step status should be updated to COMPLETED
-    step = next(s for s in evidence_state.work_steps[task_id] if s.stepId == step_id)
+    step = railos_main.state.work_steps[step_id]
     assert step.status == "COMPLETED"
 
 
