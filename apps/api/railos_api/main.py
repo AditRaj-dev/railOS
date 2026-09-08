@@ -322,9 +322,8 @@ class PostgresRepository(Repository):
         try: import psycopg
         except ImportError as exc: raise RuntimeError("psycopg is required for postgres backend") from exc
         try:
-            self.connection = psycopg.connect(url, connect_timeout=3)
+            self.connection = psycopg.connect(url, connect_timeout=3, autocommit=True)
             self.connection.execute("CREATE TABLE IF NOT EXISTS railos_state(namespace text NOT NULL,key text NOT NULL,payload jsonb NOT NULL,version bigint NOT NULL DEFAULT 1,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(namespace,key))")
-            self.connection.commit()
             row = self.connection.execute("SELECT payload FROM railos_state WHERE namespace=%s AND key=%s",("application","snapshot")).fetchone()
         except Exception as exc: raise RuntimeError("postgres connectivity validation failed") from exc
         if row:
