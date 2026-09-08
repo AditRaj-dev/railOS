@@ -231,26 +231,23 @@ interface ApiErrorEnvelope {
 }
 
 interface ApiConfig {
-  baseUrl?: string;
-  mode?: 'synthetic' | 'production';
-  getToken?: () => string | Promise<string>;
+  baseUrl: string;
 }
 
 /**
  * Get configuration from environment and defaults.
- * Mode: process.env.NEXT_PUBLIC_RAILOS_MODE ('synthetic' | 'production'), default 'synthetic'
  * Base URL: process.env.NEXT_PUBLIC_RAILOS_API_URL, default 'http://localhost:8000'
  */
 function getConfig(): ApiConfig {
-  const mode =
-    (process.env.NEXT_PUBLIC_RAILOS_MODE as 'synthetic' | 'production' | undefined) || 'synthetic';
   const baseUrl = process.env.NEXT_PUBLIC_RAILOS_API_URL || 'http://localhost:8000';
-
-  return { baseUrl, mode };
+  return { baseUrl };
 }
 
 // The shell owns the role selector; API calls read this value at request time so
-// every server-state request carries the same authority context.
+// every server-state request carries the same authority context. This drives the
+// synthetic X-RailOS-Role header used by endpoints that have no Bearer-token
+// support at all (the possession/plan/task API), and also mirrors a real login's
+// verified role so both auth paths agree on "who is acting" everywhere in the UI.
 let activeRole: RailOSRole = 'CONTROL_OFFICER';
 
 export function setApiRole(role: RailOSRole | string | null | undefined) {
@@ -262,54 +259,132 @@ export function getApiRole(): RailOSRole {
   return activeRole;
 }
 
-/**
- * Build headers based on auth mode.
- * Production mode: sends Authorization: Bearer <token>
- * Synthetic/local mode: sends X-RailOS-User and X-RailOS-Role headers
- */
-async function getAuthHeaders(mode: string): Promise<Record<string, string>> {
-  const headers: Record<string, string> = {};
+// ============================================================================
+// Real authentication (Argon2 + JWT, evidence_routes.py) — coexists with the
+// synthetic header path above. When a session is set, its Bearer token is sent
+// on every request; endpoints that understand it (evidence, admin) verify the
+// caller for real. Endpoints that don't (possession/plan/task, main.py) simply
+// ignore the header they don't declare and keep using X-RailOS-Role, which
+// authStore keeps in sync with the logged-in role via setApiRole above.
+// ============================================================================
 
-  if (mode === 'production') {
-    try {
-      // In production, try to get a real token (implementation depends on auth service)
-      const token = await getToken?.();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    } catch {
-      // Fall back to synthetic headers if token fetch fails
-    }
-  }
-
-  // Always include synthetic mode headers for now (for testing/demo)
-  if (!headers['Authorization']) {
-    headers['X-RailOS-User'] = 'demo-user';
-    headers['X-RailOS-Role'] = activeRole;
-  }
-
-  return headers;
+export interface AuthSession {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number; // epoch ms
+  userId: string;
+  role: string;
+  employeeId: string;
+  name: string;
 }
 
-let getToken: (() => string | Promise<string>) | undefined;
+export interface AuthLoginResult {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresInSeconds: number;
+  userId: string;
+  role: string;
+  employeeId: string;
+  name: string;
+}
+
+let authSession: AuthSession | null = null;
+
+export function setAuthSession(session: AuthSession | null) {
+  authSession = session;
+}
+
+export function getAuthSession(): AuthSession | null {
+  return authSession;
+}
+
+/** Registered by authStore so a transparent refresh (triggered by a 401 retry) is reflected in UI state and persisted storage. */
+let onSessionRefreshed: ((session: AuthSession) => void) | undefined;
+let onSessionExpired: (() => void) | undefined;
+
+export function setSessionSyncHandlers(handlers: {
+  onRefreshed: (session: AuthSession) => void;
+  onExpired: () => void;
+}) {
+  onSessionRefreshed = handlers.onRefreshed;
+  onSessionExpired = handlers.onExpired;
+}
+
+export async function authLogin(employeeId: string, password: string): Promise<AuthLoginResult> {
+  return fetchApi<AuthLoginResult>('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ employeeId, password }),
+  });
+}
+
+export async function authRefresh(refreshToken: string): Promise<AuthLoginResult> {
+  return fetchApi<AuthLoginResult>('/api/v1/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+export async function authLogout(refreshToken: string): Promise<void> {
+  await fetchApi('/api/v1/auth/logout', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+function toAuthSession(result: AuthLoginResult): AuthSession {
+  return {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+    expiresAt: Date.now() + result.expiresInSeconds * 1000,
+    userId: result.userId,
+    role: result.role,
+    employeeId: result.employeeId,
+    name: result.name,
+  };
+}
+
+/** Attempt a single transparent refresh using the current session's refresh token. */
+async function tryRefreshSession(): Promise<boolean> {
+  if (!authSession?.refreshToken) return false;
+  try {
+    const result = await authRefresh(authSession.refreshToken);
+    const next = toAuthSession(result);
+    authSession = next;
+    onSessionRefreshed?.(next);
+    return true;
+  } catch {
+    authSession = null;
+    onSessionExpired?.();
+    return false;
+  }
+}
 
 /**
- * Set a token getter function for production authentication.
+ * Build request headers: a real Bearer token when a session is active and not
+ * already known-expired, else the synthetic demo headers (unchanged fallback).
  */
-export function setAuthTokenGetter(getter: () => string | Promise<string>) {
-  getToken = getter;
+function getAuthHeaders(): Record<string, string> {
+  if (authSession && authSession.expiresAt > Date.now()) {
+    return { Authorization: `Bearer ${authSession.accessToken}` };
+  }
+  return { 'X-RailOS-User': 'demo-user', 'X-RailOS-Role': activeRole };
 }
+
+const AUTH_PATH_PREFIX = '/api/v1/auth/';
 
 /**
  * Fetch from the RailOS API with error handling and type conversion.
+ * On a 401 from a real (non-auth) request while a session is active, attempts
+ * one transparent refresh-and-retry before surfacing the error.
  */
-async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchApi<T>(path: string, init?: RequestInit, _retried = false): Promise<T> {
   const config = getConfig();
   const url = `${config.baseUrl}${path}`;
   const fetchInit = init || {};
 
   try {
-    const headers = await getAuthHeaders(config.mode || 'synthetic');
+    const headers = getAuthHeaders();
     const response = await fetch(url, {
       ...fetchInit,
       headers: {
@@ -328,6 +403,16 @@ async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
         errorData = errorText ? JSON.parse(errorText) : {};
       } catch {
         // If we can't parse the error response, create a minimal error
+      }
+
+      if (
+        response.status === 401 &&
+        !_retried &&
+        !path.startsWith(AUTH_PATH_PREFIX) &&
+        authSession
+      ) {
+        const refreshed = await tryRefreshSession();
+        if (refreshed) return fetchApi<T>(path, init, true);
       }
 
       const error = errorData.error;

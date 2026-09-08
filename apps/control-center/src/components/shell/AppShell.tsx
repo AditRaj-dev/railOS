@@ -2,6 +2,7 @@
 
 import React, { type ReactNode } from 'react';
 import { useRailOSStore, type UserRole } from '@/store/railosStore';
+import { useAuthStore } from '@/store/authStore';
 import { useResetDemo } from '@/lib/queries';
 import { setApiRole } from '@/lib/api';
 import { useRouter, usePathname } from 'next/navigation';
@@ -18,10 +19,13 @@ import {
   Film,
   Menu,
   X,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { TerritorySelector } from './TerritorySelector';
 import { ContextRail } from './ContextRail';
 import { StatusBar } from './StatusBar';
+import { LoginModal } from '../LoginModal';
 
 const NAV_ITEMS: Array<{
   href: string;
@@ -63,12 +67,32 @@ export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { userRole, setUserRole } = useRailOSStore();
+  const authSession = useAuthStore((s) => s.session);
+  const authStatus = useAuthStore((s) => s.status);
+  const restoreSession = useAuthStore((s) => s.restoreSession);
+  const logout = useAuthStore((s) => s.logout);
   const resetDemoMutation = useResetDemo();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  const [loginModalOpen, setLoginModalOpen] = React.useState(false);
 
   React.useEffect(() => {
-    setApiRole(userRole);
-  }, [userRole]);
+    // Attempt to restore a real session from a persisted refresh token once,
+    // on first mount. If none exists (or it's expired/revoked) this settles
+    // to 'unauthenticated' and the synthetic role selector remains in charge.
+    void restoreSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    // Only push the dropdown's role when there's no real session — a login
+    // already drives setApiRole itself via authStore, and re-running this on
+    // every userRole change would fight a real session's role right after login
+    // (setUserRole(realRole) below also updates userRole, re-triggering this
+    // effect — guarding on authSession keeps the two paths from racing).
+    if (!authSession) {
+      setApiRole(userRole);
+    }
+  }, [userRole, authSession]);
 
   const handleRoleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const role = event.target.value as UserRole;
@@ -79,6 +103,10 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleReset = () => {
     resetDemoMutation.mutate();
+  };
+
+  const handleLogout = () => {
+    void logout();
   };
 
   // Filter nav items based on user role
@@ -131,18 +159,47 @@ export function AppShell({ children }: AppShellProps) {
             <span>CRIS/NTES FEED LIVE</span>
           </div>
 
-          <div className="flex items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-1">
-            <label htmlFor="shell-role" className="text-[10px] font-mono font-bold uppercase tracking-wide text-[var(--text-muted)]">Acting role</label>
-            <select
-              id="shell-role"
-              value={userRole}
-              onChange={handleRoleChange}
-              aria-label="Acting role"
-              className="min-h-9 max-w-44 rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2 text-xs font-mono font-semibold text-[var(--text-primary)]"
-            >
-              {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
-            </select>
-          </div>
+          {authSession ? (
+            <div className="flex items-center gap-2 rounded border border-[var(--status-ok-border)] bg-[var(--status-ok-bg)] px-2 py-1">
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wide text-[var(--status-ok-text)]">
+                  Signed in · {authSession.role.replace('_', ' ')}
+                </span>
+                <span className="text-xs font-mono font-semibold text-[var(--status-ok-text)]">{authSession.name}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                aria-label="Sign out"
+                className="min-h-9 flex items-center gap-1 px-2 rounded border border-[var(--status-ok-border)] text-[var(--status-ok-text)] hover:bg-[var(--status-ok-border)]/20 text-xs font-mono font-semibold"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-1">
+              <label htmlFor="shell-role" className="text-[10px] font-mono font-bold uppercase tracking-wide text-[var(--text-muted)]">Acting role</label>
+              <select
+                id="shell-role"
+                value={userRole}
+                onChange={handleRoleChange}
+                aria-label="Acting role"
+                className="min-h-9 max-w-44 rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-2 text-xs font-mono font-semibold text-[var(--text-primary)]"
+              >
+                {ROLE_OPTIONS.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+              </select>
+              <button
+                onClick={() => setLoginModalOpen(true)}
+                title="Sign in with a real account"
+                aria-label="Sign in"
+                disabled={authStatus === 'restoring'}
+                className="min-h-9 flex items-center gap-1 px-2 rounded border border-[var(--border-strong)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] text-xs font-mono font-semibold disabled:opacity-50"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{authStatus === 'restoring' ? 'Checking…' : 'Log in'}</span>
+              </button>
+            </div>
+          )}
 
           <button
             onClick={handleReset}
@@ -254,6 +311,8 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Status Bar */}
       <StatusBar />
+
+      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
     </div>
   );
 }
