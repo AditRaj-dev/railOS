@@ -27,9 +27,11 @@ services:
       # Neon / S3 Object Storage for Field Flaw Photographs & USFD Evidence
       - key: NEON_STORAGE_BUCKET
         sync: false
-      - key: NEON_STORAGE_KEY
+      - key: AWS_ENDPOINT_URL_S3
         sync: false
-      - key: NEON_STORAGE_SECRET
+      - key: AWS_ACCESS_KEY_ID
         sync: false
-      - key: NEON_STORAGE_ENDPOINT
+      - key: AWS_SECRET_ACCESS_KEY
         sync: false
+      - key: AWS_REGION
+        value: "us-east-2"

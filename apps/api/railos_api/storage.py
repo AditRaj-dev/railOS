@@ -248,14 +248,24 @@ class S3ObjectStore(ObjectStore):
 
 def get_object_store() -> ObjectStore:
     """Factory creating configured ObjectStore."""
-    bucket = os.getenv("EVIDENCE_S3_BUCKET") or os.getenv("NEON_STORAGE_BUCKET")
+    bucket = (
+        os.getenv("EVIDENCE_S3_BUCKET")
+        or os.getenv("NEON_STORAGE_BUCKET")
+        or os.getenv("AWS_S3_BUCKET")
+    )
     if bucket:
-        endpoint = os.getenv("EVIDENCE_S3_ENDPOINT") or os.getenv("NEON_STORAGE_ENDPOINT")
+        endpoint = (
+            os.getenv("AWS_ENDPOINT_URL_S3")
+            or os.getenv("EVIDENCE_S3_ENDPOINT")
+            or os.getenv("NEON_STORAGE_ENDPOINT")
+        )
         access_key = os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("NEON_STORAGE_KEY")
         secret_key = os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("NEON_STORAGE_SECRET")
+        region = os.getenv("AWS_REGION") or "auto"
         return S3ObjectStore(
             bucket_name=bucket,
             endpoint_url=endpoint,
+            region_name=region,
             access_key=access_key,
             secret_key=secret_key,
         )
