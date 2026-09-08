@@ -1,38 +1,67 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRailOSStore } from '../store/railosStore';
-import { CorridorSection } from '../types/railos';
+import { useNetworkCatalog, useMaintenanceTasks, useBlockPlans } from '@/lib/queries';
+import { toDisplayTask, toDisplayBlock, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import { DepartmentBadge, RiskBadge } from './RailwayComponents';
-import { 
-  Layers, 
-  Activity, 
-  Wrench, 
-  Zap, 
-  Radio, 
-  AlertTriangle, 
-  ShieldCheck, 
-  Train,
-  Clock,
-  ArrowRight,
-  Bot
+import {
+  Layers,
+  Wrench,
+  Zap,
+  Radio,
+  Train
 } from 'lucide-react';
 
+type SectionStatus = 'NORMAL' | 'CAUTION' | 'RESTRICTED';
+
+function deriveSectionStatus(criticalDefectCount: number, pendingMaintenanceCount: number): SectionStatus {
+  if (criticalDefectCount > 0) return 'RESTRICTED';
+  if (pendingMaintenanceCount > 3) return 'CAUTION';
+  return 'NORMAL';
+}
+
 export const DigitalTwinView: React.FC = () => {
-  const { 
-    sections, 
-    tasks, 
-    trains, 
-    selectedSectionId, 
-    setSelectedSectionId, 
-    activePlan
-  } = useRailOSStore();
+  const { selectedSectionId, setSelectedSectionId } = useRailOSStore();
+  const { data: catalog } = useNetworkCatalog();
+  const { data: plansData } = useBlockPlans();
 
   const [activeLayer, setActiveLayer] = useState<'ALL' | 'CIVIL' | 'S_AND_T' | 'TRD' | 'TRAFFIC'>('ALL');
 
-  const selectedSection = sections.find(s => s.id === selectedSectionId) || sections[0];
-  const sectionTasks = tasks.filter(t => t.sectionId === selectedSection.id);
-  const sectionBlocks = activePlan.blocks.filter(b => b.sectionId === selectedSection.id);
+  const sections = catalog?.sections || [];
+  const selectedSection = sections.find((s) => s.sectionId === selectedSectionId) || sections[0];
+
+  const { data: tasksData } = useMaintenanceTasks(selectedSection ? { sectionId: selectedSection.sectionId } : undefined);
+  const sectionNames = useMemo(() => buildSectionNameMap(catalog?.sections || []), [catalog]);
+  const sectionTasks = useMemo(() => {
+    const rawTasks = (tasksData?.tasks || []) as Record<string, unknown>[];
+    return rawTasks.map((t) => toDisplayTask(t, sectionNames));
+  }, [tasksData, sectionNames]);
+
+  const activePlan = useMemo(() => pickActivePlan(plansData?.plans || []), [plansData]);
+  const sectionBlocks = useMemo(
+    () =>
+      (activePlan?.blocks || [])
+        .filter((b) => b.sectionId === selectedSection?.sectionId)
+        .map((b) => toDisplayBlock(b, sectionNames)),
+    [activePlan, selectedSection, sectionNames]
+  );
+
+  const deptCounts = useMemo(() => {
+    const counts: Record<string, number> = { CIVIL: 0, S_AND_T: 0, TRD: 0 };
+    sectionTasks.forEach((t) => {
+      counts[t.department] = (counts[t.department] || 0) + 1;
+    });
+    return counts;
+  }, [sectionTasks]);
+
+  if (!selectedSection) {
+    return (
+      <div className="p-6 rounded border border-dashed border-slate-800 text-center text-xs font-mono text-slate-500">
+        No network sections available from the API yet.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -49,8 +78,8 @@ export const DigitalTwinView: React.FC = () => {
                 key={layer}
                 onClick={() => setActiveLayer(layer)}
                 className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold transition-all border ${
-                  activeLayer === layer 
-                    ? 'bg-sky-600 text-white border-sky-500 shadow-sm' 
+                  activeLayer === layer
+                    ? 'bg-sky-600 text-white border-sky-500 shadow-sm'
                     : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
                 }`}
               >
@@ -61,17 +90,17 @@ export const DigitalTwinView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-          <span>CORRIDOR:</span>
-          <span className="text-slate-100 font-bold">New Delhi (NDLS) ━━ Tundla Jn (TDL) [204.9 km]</span>
+          <span>SECTIONS LOADED:</span>
+          <span className="text-slate-100 font-bold">{sections.length}</span>
         </div>
       </div>
 
       {/* Main Interactive Schematic Trunk Line */}
       <div className="p-6 rounded border border-slate-800 bg-slate-950 relative overflow-x-auto">
         <div className="min-w-[760px]">
-          
+
           <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-6 flex items-center justify-between">
-            <span>Interlocking & Corridor Schematic View (Click Section to Inspect)</span>
+            <span>Network Section Overview (Click Section to Inspect)</span>
             <span className="flex items-center gap-2">
               <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-sm" /> Normal
               <span className="inline-block w-2.5 h-2.5 bg-amber-500 rounded-sm ml-2" /> Caution
@@ -79,27 +108,28 @@ export const DigitalTwinView: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center justify-between relative py-6">
+          <div className="flex items-center justify-between relative py-6 flex-wrap gap-y-8">
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1.5 bg-slate-800 z-0" />
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-slate-700 z-0" />
 
             {sections.map((sec) => {
-              const isSelected = sec.id === selectedSection.id;
-              
+              const isSelected = sec.sectionId === selectedSection.sectionId;
+              const status = deriveSectionStatus(sec.metrics.criticalDefectCount, sec.metrics.pendingMaintenanceCount);
+
               let statusBorder = 'border-emerald-500/80 text-emerald-400';
               let statusDot = 'bg-emerald-400';
-              if (sec.status === 'RESTRICTED') {
+              if (status === 'RESTRICTED') {
                 statusBorder = 'border-red-500 text-red-400 animate-pulse';
                 statusDot = 'bg-red-500';
-              } else if (sec.status === 'CAUTION') {
+              } else if (status === 'CAUTION') {
                 statusBorder = 'border-amber-500 text-amber-400';
                 statusDot = 'bg-amber-400';
               }
 
               return (
-                <div 
-                  key={sec.id}
-                  onClick={() => setSelectedSectionId(sec.id)}
+                <div
+                  key={sec.sectionId}
+                  onClick={() => setSelectedSectionId(sec.sectionId)}
                   className="relative z-10 flex flex-col items-center cursor-pointer transition-all duration-200 group"
                 >
                   <div className={`px-3 py-1.5 rounded-md border text-xs font-mono font-bold bg-slate-900 shadow-lg flex items-center gap-2 ${
@@ -107,7 +137,6 @@ export const DigitalTwinView: React.FC = () => {
                   }`}>
                     <span className={`w-2 h-2 rounded-full ${statusDot}`} />
                     <span>{sec.fromStation}</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Km {sec.distanceKm}</span>
                   </div>
 
                   <div className={`mt-4 p-2.5 rounded border text-[11px] font-mono w-44 bg-slate-900/90 text-slate-300 transition-all ${
@@ -115,23 +144,19 @@ export const DigitalTwinView: React.FC = () => {
                   }`}>
                     <div className="flex items-center justify-between font-bold text-slate-200 mb-1">
                       <span>{sec.code}</span>
-                      <span className={sec.capacityUtilizationPct > 140 ? 'text-amber-400' : 'text-slate-300'}>
-                        {sec.capacityUtilizationPct}% Cap
+                      <span className={sec.metrics.trafficPressure > 100 ? 'text-amber-400' : 'text-slate-300'}>
+                        {Math.round(sec.metrics.trafficPressure)}% Traffic
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-slate-800 text-[10px] text-center">
+                    <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-slate-800 text-[10px] text-center">
                       <div className="bg-amber-950/30 p-0.5 rounded border border-amber-800/30">
-                        <span className="block text-amber-400 font-bold">{sec.civilDefects}</span>
-                        <span className="text-[9px] text-slate-400">TRK</span>
+                        <span className="block text-amber-400 font-bold">{sec.metrics.pendingMaintenanceCount}</span>
+                        <span className="text-[9px] text-slate-400">PENDING</span>
                       </div>
-                      <div className="bg-sky-950/30 p-0.5 rounded border border-sky-800/30">
-                        <span className="block text-sky-400 font-bold">{sec.sandTDefects}</span>
-                        <span className="text-[9px] text-slate-400">S&T</span>
-                      </div>
-                      <div className="bg-emerald-950/30 p-0.5 rounded border border-emerald-800/30">
-                        <span className="block text-emerald-400 font-bold">{sec.trdDefects}</span>
-                        <span className="text-[9px] text-slate-400">OHE</span>
+                      <div className="bg-red-950/30 p-0.5 rounded border border-red-800/30">
+                        <span className="block text-red-400 font-bold">{sec.metrics.criticalDefectCount}</span>
+                        <span className="text-[9px] text-slate-400">CRITICAL</span>
                       </div>
                     </div>
                   </div>
@@ -139,38 +164,32 @@ export const DigitalTwinView: React.FC = () => {
               );
             })}
 
-            <div className="relative z-10 flex flex-col items-center">
-              <div className="px-3 py-1.5 rounded-md border border-slate-700 text-xs font-mono font-bold bg-slate-900 text-slate-300">
-                TDL (Tundla)
-              </div>
-            </div>
-
           </div>
 
         </div>
       </div>
 
-      {/* Section Detailed Telemetry & Plan Rationale Workspace */}
+      {/* Section Detailed Telemetry */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
+
         <div className="lg:col-span-7 rounded border border-slate-800 bg-slate-900/80 p-4 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
               <div className="text-sm font-bold text-white font-mono flex items-center gap-2">
                 <span>{selectedSection.name}</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-normal">
-                  {selectedSection.tracks} Tracks • {selectedSection.electrified ? '25kV Electrified' : 'Non-El'}
+                  {selectedSection.tracks.length} Track{selectedSection.tracks.length === 1 ? '' : 's'} ({selectedSection.tracks.join('/')})
                 </span>
               </div>
               <div className="text-xs text-slate-400 mt-0.5">
-                {selectedSection.description}
+                {selectedSection.fromStation} – {selectedSection.toStation}
               </div>
             </div>
-            
+
             <div className="text-right font-mono">
-              <div className="text-xs text-slate-400">Health Index</div>
-              <div className={`text-lg font-bold ${selectedSection.healthScore < 70 ? 'text-red-400' : 'text-emerald-400'}`}>
-                {selectedSection.healthScore} / 100
+              <div className="text-xs text-slate-400">Asset Availability</div>
+              <div className={`text-lg font-bold ${selectedSection.metrics.assetAvailability < 70 ? 'text-red-400' : 'text-emerald-400'}`}>
+                {Math.round(selectedSection.metrics.assetAvailability)} / 100
               </div>
             </div>
           </div>
@@ -181,8 +200,8 @@ export const DigitalTwinView: React.FC = () => {
                 <span>Civil / Track</span>
                 <Wrench className="w-3.5 h-3.5" />
               </div>
-              <div className="text-slate-300 mt-1 font-bold">{selectedSection.civilDefects} Flaws / Tasks</div>
-              <div className="text-[10px] text-slate-400">IMR Weld & Rail Flaws</div>
+              <div className="text-slate-300 mt-1 font-bold">{deptCounts.CIVIL} Open Tasks</div>
+              <div className="text-[10px] text-slate-400">Rail & Track Maintenance</div>
             </div>
 
             <div className="p-2.5 rounded border border-sky-900/40 bg-sky-950/20 text-xs font-mono">
@@ -190,8 +209,8 @@ export const DigitalTwinView: React.FC = () => {
                 <span>S&T Interlocking</span>
                 <Radio className="w-3.5 h-3.5" />
               </div>
-              <div className="text-slate-300 mt-1 font-bold">{selectedSection.sandTDefects} Signal Issues</div>
-              <div className="text-[10px] text-slate-400">Point Machine & DAC</div>
+              <div className="text-slate-300 mt-1 font-bold">{deptCounts.S_AND_T} Open Tasks</div>
+              <div className="text-[10px] text-slate-400">Signal & Telecom</div>
             </div>
 
             <div className="p-2.5 rounded border border-emerald-900/40 bg-emerald-950/20 text-xs font-mono">
@@ -199,7 +218,7 @@ export const DigitalTwinView: React.FC = () => {
                 <span>TRD / Traction</span>
                 <Zap className="w-3.5 h-3.5" />
               </div>
-              <div className="text-slate-300 mt-1 font-bold">{selectedSection.trdDefects} OHE Issues</div>
+              <div className="text-slate-300 mt-1 font-bold">{deptCounts.TRD} Open Tasks</div>
               <div className="text-[10px] text-slate-400">Catenary & Isolators</div>
             </div>
           </div>
@@ -210,23 +229,25 @@ export const DigitalTwinView: React.FC = () => {
             </div>
             {sectionTasks.length === 0 ? (
               <div className="p-3 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded">
-                No open maintenance defects logged in this section.
+                No open maintenance tasks logged in this section.
               </div>
             ) : (
-              sectionTasks.map(t => (
-                <div key={t.id} className="p-2.5 rounded border border-slate-800 bg-slate-950 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <DepartmentBadge dept={t.department} />
-                      <span className="text-xs font-semibold text-slate-200">{t.title}</span>
+              sectionTasks
+                .filter((t) => activeLayer === 'ALL' || activeLayer === 'TRAFFIC' || t.department === activeLayer)
+                .map((t) => (
+                  <div key={t.id} className="p-2.5 rounded border border-slate-800 bg-slate-950 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <DepartmentBadge dept={t.department} />
+                        <span className="text-xs font-semibold text-slate-200">{t.title}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono">
+                        Req: {t.blockRequirement} Block ({t.estimatedMinutes}m)
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 font-mono">
-                      Asset: {t.assetName} • Req: {t.blockRequirement} Block ({t.estimatedMinutes}m)
-                    </div>
+                    <RiskBadge score={t.riskScore} severity={t.severity} />
                   </div>
-                  <RiskBadge score={t.riskScore} severity={t.severity} />
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>
@@ -235,23 +256,27 @@ export const DigitalTwinView: React.FC = () => {
           <div>
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
-                <Bot className="w-4 h-4 text-sky-400" />
+                <Train className="w-4 h-4 text-sky-400" />
                 <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-100">
-                  Why This Plan?
+                  Possession Blocks in Section
                 </h3>
               </div>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                Not Wired
-              </span>
             </div>
 
-            <p className="text-xs text-slate-400 mt-3 leading-relaxed">
-              Renders optimizer factors, warnings and objective breakdown for the selected section. Explanation only &mdash; never generates or approves a schedule.
-            </p>
-
-            <div className="mt-3 p-3 rounded border border-slate-800 bg-slate-950 font-mono text-xs text-slate-500 leading-relaxed min-h-[160px] flex items-center justify-center text-center italic">
-              Pending optimizer factor wiring. See docs/handoff/04-plan-rationale-panel.md
-            </div>
+            {sectionBlocks.length === 0 ? (
+              <div className="mt-3 p-3 rounded border border-slate-800 bg-slate-950 font-mono text-xs text-slate-500 leading-relaxed min-h-[120px] flex items-center justify-center text-center italic">
+                No possession blocks in the active plan for this section.
+              </div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {sectionBlocks.map((b) => (
+                  <div key={b.id} className="p-2.5 rounded border border-slate-800 bg-slate-950 text-xs font-mono flex items-center justify-between">
+                    <span className="font-bold text-slate-200">{b.blockCode}</span>
+                    <span className="text-slate-400">{b.startTime} – {b.endTime}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

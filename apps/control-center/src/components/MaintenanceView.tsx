@@ -4,22 +4,17 @@ import React, { useState, useMemo } from 'react';
 import { useRailOSStore } from '../store/railosStore';
 import { useMaintenanceTasks } from '../lib/queries';
 import { DepartmentBadge, RiskBadge } from './RailwayComponents';
-import { 
-  Search, 
-  Filter, 
-  ArrowUpDown, 
-  Wrench, 
-  X, 
-  Clock, 
-  MapPin, 
-  ShieldCheck, 
-  FileText, 
+import {
+  Search,
+  ArrowUpDown,
+  ShieldCheck,
+  FileText,
   AlertOctagon,
   Database
 } from 'lucide-react';
 import { MaintenanceTask, Department, DefectSeverity, PriorityBand } from '../types/railos';
 
-function mapServerTask(item: any): MaintenanceTask {
+function mapServerTask(item: Record<string, unknown>): MaintenanceTask {
   const deptMap: Record<string, Department> = {
     ENGG: 'CIVIL',
     CIVIL: 'CIVIL',
@@ -28,52 +23,57 @@ function mapServerTask(item: any): MaintenanceTask {
     TRD: 'TRD',
     OPERATING: 'OPERATING',
   };
-  const department: Department = deptMap[item.department] || 'CIVIL';
+  const department: Department = deptMap[String(item.department ?? '')] || 'CIVIL';
   const sevNum = typeof item.severity === 'number' ? item.severity : 5;
   const severity: DefectSeverity = sevNum >= 8 ? 'CRITICAL' : sevNum >= 5 ? 'HIGH' : 'MEDIUM';
   const riskScore = Math.min(100, sevNum * 10);
   const priorityBand: PriorityBand = sevNum >= 8 ? 'P1_SAFETY_CRITICAL' : sevNum >= 5 ? 'P2_DEFERRED_RISK' : 'P3_ROUTINE';
 
+  const taskId = String(item.taskId ?? item.id ?? '');
+  const assetId = String(item.assetId ?? 'AST-01');
+  const sectionId = String(item.sectionId ?? 'SEC-01');
+  const taskType = item.taskType ? String(item.taskType) : 'Track Maintenance';
+  const dueMinute = typeof item.dueMinute === 'number' ? item.dueMinute : undefined;
+  const blockType = item.blockType === 'POWER' || item.blockType === 'INTEGRATED' ? (item.blockType as 'POWER' | 'INTEGRATED') : 'TRAFFIC';
+  const machineType = item.machineType ? String(item.machineType) : undefined;
+
   return {
-    id: item.taskId || item.id,
-    taskCode: item.taskId || item.taskCode || 'TSK-00',
+    id: taskId,
+    taskCode: taskId || 'TSK-00',
     department,
-    title: item.title || `${item.taskType || 'Track Maintenance'} on ${item.assetId || 'Corridor'}`,
-    assetId: item.assetId || 'AST-01',
-    assetName: item.assetName || item.assetId || 'Asset Section',
-    sectionId: item.sectionId || 'SEC-01',
-    sectionName: item.sectionName || item.sectionId || 'Ghaziabad – Aligarh Section',
+    title: item.title ? String(item.title) : `${taskType} on ${assetId}`,
+    assetId,
+    assetName: item.assetName ? String(item.assetName) : assetId,
+    sectionId,
+    sectionName: item.sectionName ? String(item.sectionName) : sectionId,
     trackId: (item.track === 'UP' || item.track === 'DOWN') ? item.track : 'BOTH',
     severity,
     riskScore,
     priorityBand,
     priorityScore: riskScore,
-    dueDate: item.dueMinute ? `T+${Math.round(item.dueMinute / 60)}h` : 'Today',
-    estimatedMinutes: item.estimatedDuration || 120,
-    blockRequirement: (item.blockType === 'POWER' || item.blockType === 'INTEGRATED') ? item.blockType : 'TRAFFIC',
-    status: item.status || 'PENDING',
-    crewRequired: item.crewRequired || 12,
-    specialMachine: item.machineType || undefined,
+    dueDate: dueMinute !== undefined ? `T+${Math.round(dueMinute / 60)}h` : 'Today',
+    estimatedMinutes: typeof item.estimatedDuration === 'number' ? item.estimatedDuration : 120,
+    blockRequirement: blockType,
+    status: item.status ? String(item.status) as MaintenanceTask['status'] : 'PENDING',
+    crewRequired: typeof item.crewRequired === 'number' ? item.crewRequired : 12,
+    specialMachine: machineType as MaintenanceTask['specialMachine'],
     isolationRequired: Boolean(item.requiresPTW || item.oheElementarySection),
-    reasons: item.reasons || [
-      `Criticality index: ${item.criticality || 5}/10, overdue backlog: ${item.overdueDays || 0} days`,
-      item.machineType ? `Deployment machinery: ${item.machineType}` : 'Manual gang deployment required'
+    reasons: Array.isArray(item.reasons) ? item.reasons as string[] : [
+      `Criticality index: ${typeof item.criticality === 'number' ? item.criticality : 5}/10`,
+      machineType ? `Deployment machinery: ${machineType}` : 'Manual gang deployment required'
     ]
   };
 }
 
 export const MaintenanceView: React.FC = () => {
-  const { tasks, selectedTaskId, setSelectedTaskId } = useRailOSStore();
+  const { selectedTaskId, setSelectedTaskId } = useRailOSStore();
   const { data: serverTasksResponse, isLoading: isLoadingServerTasks } = useMaintenanceTasks();
 
-  const isLiveServer = Boolean(serverTasksResponse?.tasks && Array.isArray(serverTasksResponse.tasks) && serverTasksResponse.tasks.length > 0);
-
   const effectiveTasks: MaintenanceTask[] = useMemo(() => {
-    if (isLiveServer && serverTasksResponse?.tasks) {
-      return (serverTasksResponse.tasks as any[]).map(mapServerTask);
-    }
-    return tasks;
-  }, [isLiveServer, serverTasksResponse, tasks]);
+    const raw = serverTasksResponse?.tasks;
+    if (!Array.isArray(raw)) return [];
+    return (raw as Record<string, unknown>[]).map(mapServerTask);
+  }, [serverTasksResponse]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState<'ALL' | 'CIVIL' | 'S_AND_T' | 'TRD'>('ALL');
@@ -81,7 +81,7 @@ export const MaintenanceView: React.FC = () => {
   const [sortField, setSortField] = useState<'riskScore' | 'priorityScore' | 'estimatedMinutes'>('riskScore');
   const [sortAsc, setSortAsc] = useState(false);
 
-  const selectedTask = effectiveTasks.find(t => t.id === selectedTaskId) || effectiveTasks[0];
+  const selectedTask = effectiveTasks.find(t => t.id === selectedTaskId) || effectiveTasks[0] || null;
 
   const filteredTasks = effectiveTasks.filter(t => {
     const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -146,24 +146,26 @@ export const MaintenanceView: React.FC = () => {
             </button>
           ))}
 
-          {isLiveServer && (
-            <span
-              className="ml-2 px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 border"
-              style={{
-                backgroundColor: `var(--status-ok-bg)`,
-                color: `var(--status-ok-fg)`,
-                borderColor: `var(--status-ok-border)`,
-              }}
-            >
-              <Database className="w-3 h-3" /> Live Backend ({effectiveTasks.length})
-            </span>
-          )}
+          <span
+            className="ml-2 px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 border"
+            style={{
+              backgroundColor: `var(--status-ok-bg)`,
+              color: `var(--status-ok-fg)`,
+              borderColor: `var(--status-ok-border)`,
+            }}
+          >
+            <Database className="w-3 h-3" /> {isLoadingServerTasks ? 'Loading…' : `Live Backend (${effectiveTasks.length})`}
+          </span>
         </div>
       </div>
 
-      {/* Main Grid: Data Table + Detail Drawer */}
+      {!isLoadingServerTasks && effectiveTasks.length === 0 ? (
+        <div className="p-8 text-center rounded border border-dashed border-slate-800 text-xs font-mono text-slate-500">
+          No maintenance tasks reported by the API.
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
+
         {/* Dense Operational Table */}
         <div className="lg:col-span-8 rounded border border-slate-800 bg-slate-950 overflow-x-auto">
           <table className="w-full text-left border-collapse font-mono text-xs">
@@ -182,7 +184,7 @@ export const MaintenanceView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {filteredTasks.map(t => {
-                const isSelected = t.id === selectedTask.id;
+                const isSelected = t.id === selectedTask?.id;
                 return (
                   <tr
                     key={t.id}
@@ -237,10 +239,11 @@ export const MaintenanceView: React.FC = () => {
               </h3>
             </div>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-              {selectedTask.taskCode}
+              {selectedTask?.taskCode}
             </span>
           </div>
 
+          {selectedTask && (
           <div className="space-y-3">
             <div>
               <div className="text-sm font-semibold text-white">
@@ -308,9 +311,11 @@ export const MaintenanceView: React.FC = () => {
               </div>
             </div>
           </div>
+          )}
         </div>
 
       </div>
+      )}
     </div>
   );
 };

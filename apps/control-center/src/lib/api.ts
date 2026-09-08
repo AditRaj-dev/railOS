@@ -693,6 +693,11 @@ export async function updateWorkAssignment(
   return data;
 }
 
+export interface EmergencyCreatedResponse {
+  id: string;
+  replanRequired: boolean;
+}
+
 export async function createEmergency(payload: {
   title: string;
   corridorId: string;
@@ -700,8 +705,8 @@ export async function createEmergency(payload: {
   assetId?: string;
   severity?: string;
   durationMinutes?: number;
-}): Promise<unknown> {
-  const data = await fetchApi<unknown>('/api/v1/emergencies', {
+}): Promise<EmergencyCreatedResponse> {
+  const data = await fetchApi<EmergencyCreatedResponse>('/api/v1/emergencies', {
     method: 'POST',
     body: JSON.stringify({
       title: payload.title,

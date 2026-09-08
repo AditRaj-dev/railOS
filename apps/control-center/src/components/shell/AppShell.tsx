@@ -14,7 +14,6 @@ import {
   Smartphone,
   BarChart3,
   RotateCcw,
-  ShieldAlert,
   ShieldCheck,
   Menu,
   X,
@@ -61,7 +60,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { resetToDefault, isEmergencyActive, userRole, setUserRole } = useRailOSStore();
+  const { userRole, setUserRole } = useRailOSStore();
   const resetDemoMutation = useResetDemo();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
@@ -77,7 +76,6 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const handleReset = () => {
-    resetToDefault();
     resetDemoMutation.mutate();
   };
 
@@ -126,16 +124,6 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Status & Controls */}
           <div className="flex items-center gap-2 md:gap-3">
-          {isEmergencyActive && (
-            <div
-              role="status"
-              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded bg-red-950/80 border border-red-500 text-red-300 font-mono text-xs animate-pulse"
-            >
-              <ShieldAlert className="w-4 h-4 text-red-400" />
-              <span>EMERGENCY FRACTURE ON DOWN LINE</span>
-            </div>
-          )}
-
           <div className="flex items-center gap-2 text-xs font-mono text-slate-300 px-2 py-1 rounded bg-slate-900 border border-slate-800" role="status">
             <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
             <span>CRIS/NTES FEED LIVE</span>

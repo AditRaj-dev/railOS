@@ -8,17 +8,11 @@ import {
   CheckCircle2,
   XCircle,
   MapPin,
-  Clock,
-  User,
-  Hash,
-  Eye,
   Camera,
   Video,
-  ShieldAlert,
   Users,
   Plus,
   RefreshCw,
-  FileText,
   Lock,
 } from 'lucide-react';
 import {
@@ -28,13 +22,16 @@ import {
   getSupervisorsList,
   createSupervisorAccount,
   updateSupervisorAreas,
+  type EvidenceRecord,
+  type SupervisorRecord,
 } from '@/lib/api';
+import { Modal } from './ui/Modal';
 
 export function EvidenceReviewView() {
   const [activeTab, setActiveTab] = useState<'flagged' | 'timeline' | 'supervisors'>('flagged');
-  const [evidenceItems, setEvidenceItems] = useState<any[]>([]);
-  const [supervisors, setSupervisors] = useState<any[]>([]);
-  const [selectedEvidence, setSelectedEvidence] = useState<any | null>(null);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceRecord[]>([]);
+  const [supervisors, setSupervisors] = useState<SupervisorRecord[]>([]);
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [reviewDecision, setReviewDecision] = useState<'ACCEPT' | 'REJECT' | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
@@ -48,7 +45,6 @@ export function EvidenceReviewView() {
   const [newSections, setNewSections] = useState('SEC_KRJ_SMQ, GZB-ALJN');
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const [evRes, supRes] = await Promise.all([
         getEvidenceList(),
@@ -63,8 +59,16 @@ export function EvidenceReviewView() {
     }
   };
 
-  useEffect(() => {
+  const handleRefresh = () => {
+    setLoading(true);
     fetchData();
+  };
+
+  useEffect(() => {
+    // Initial load on mount; fetchData's setState calls resolve after the
+    // Promise.all await, not synchronously within this effect body.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData();
   }, []);
 
   const flaggedItems = evidenceItems.filter(
@@ -74,13 +78,13 @@ export function EvidenceReviewView() {
     (item) => item.status === 'VERIFIED' || item.status === 'ACCEPTED_EXCEPTION'
   );
 
-  const handleSelectEvidence = async (item: any) => {
+  const handleSelectEvidence = async (item: EvidenceRecord) => {
     try {
       const details = await getEvidenceDetails(item.evidenceId);
       setSelectedEvidence(details);
       setReviewDecision(null);
       setReviewNotes('');
-    } catch (err) {
+    } catch {
       setSelectedEvidence(item);
     }
   };
@@ -138,7 +142,7 @@ export function EvidenceReviewView() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchData}
+            onClick={handleRefresh}
             className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -447,23 +451,13 @@ export function EvidenceReviewView() {
 
       {/* Review / Audit Modal */}
       {selectedEvidence && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-lg text-white">
-                  Evidence Audit: {selectedEvidence.evidenceId}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedEvidence(null)}
-                className="text-slate-400 hover:text-white font-mono text-sm"
-              >
-                ✕
-              </button>
-            </div>
-
+        <Modal
+          open={Boolean(selectedEvidence)}
+          onClose={() => setSelectedEvidence(null)}
+          title={`Evidence Audit: ${selectedEvidence.evidenceId}`}
+          maxWidthClassName="max-w-3xl"
+        >
+          <div className="space-y-6">
             {/* Media Preview Box */}
             <div className="space-y-2">
               <div className="text-xs font-mono uppercase text-slate-400">Captured Media Proof</div>
@@ -586,27 +580,18 @@ export function EvidenceReviewView() {
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Add Supervisor Modal */}
       {showAddSupervisor && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form
-            onSubmit={handleCreateSupervisor}
-            className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl"
-          >
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="font-bold text-white">Create Supervisor Account</h3>
-              <button
-                type="button"
-                onClick={() => setShowAddSupervisor(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
+        <Modal
+          open={showAddSupervisor}
+          onClose={() => setShowAddSupervisor(false)}
+          title="Create Supervisor Account"
+          maxWidthClassName="max-w-md"
+        >
+          <form onSubmit={handleCreateSupervisor} className="space-y-4">
             <div className="space-y-3 text-xs font-sans">
               <div>
                 <label className="block text-slate-400 mb-1">Employee ID</label>
@@ -672,7 +657,7 @@ export function EvidenceReviewView() {
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
     </div>
   );

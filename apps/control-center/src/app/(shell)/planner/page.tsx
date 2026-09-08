@@ -1,8 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BlockPlannerView } from '@/components/BlockPlannerView';
 
 export default function PlannerPage() {
-  return <BlockPlannerView />;
+  return (
+    <Suspense fallback={null}>
+      <BlockPlannerView />
+    </Suspense>
+  );
 }

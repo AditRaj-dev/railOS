@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { FileText, RefreshCw } from 'lucide-react';
 import { useBlockPlans, usePlanDetail } from '@/lib/queries';
-import { useRailOSStore } from '@/store/railosStore';
 import { getTokenDef, PLAN_STATUS_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { SanctionChainPanel } from './SanctionChainPanel';
@@ -12,7 +11,6 @@ import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/
 export function PlanComparisonView() {
   const plansQuery = useBlockPlans();
   const [selectedPlanId, setSelectedPlanId] = useState('');
-  const syntheticCandidates = useRailOSStore((state) => state.candidates);
   const plans = plansQuery.data?.plans || [];
   const activePlanId = selectedPlanId || plans[0]?.planId || '';
   const selectedPlanQuery = usePlanDetail(activePlanId, { enabled: Boolean(activePlanId) });
@@ -41,7 +39,7 @@ export function PlanComparisonView() {
       {plansQuery.isError && (
         <div className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-4 text-sm text-[var(--status-critical-text)]" role="alert">
           <p className="font-semibold">Plan API unavailable</p>
-          <p className="mt-1">{plansQuery.error.message}. The local comparison fixtures remain visible below; sanctioning requires an API-backed plan.</p>
+          <p className="mt-1">{plansQuery.error.message}. Sanctioning requires an API-backed plan.</p>
         </div>
       )}
 
@@ -70,18 +68,9 @@ export function PlanComparisonView() {
           </Table>
         </section>
       ) : (
-        <section className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-5" aria-labelledby="fixture-title">
-          <h2 id="fixture-title" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-primary)]">Local comparison fixtures</h2>
-          <p className="mt-2 text-sm text-[var(--text-secondary)]">Generate a plan from the planner to create API-backed candidates and an auditable sanction chain.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {syntheticCandidates.map((candidate) => (
-              <article key={candidate.mode} className="rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
-                <div className="flex items-center justify-between gap-2"><h3 className="font-mono text-sm font-bold text-[var(--text-primary)]">{candidate.mode.replaceAll('_', ' ')}</h3><span className="font-mono text-xs text-[var(--text-muted)]">{candidate.version}</span></div>
-                <p className="mt-2 text-sm text-[var(--text-secondary)]">{candidate.recommendationNote}</p>
-                <dl className="mt-3 space-y-1 text-xs text-[var(--text-secondary)]"><div className="flex justify-between"><dt>Blocks</dt><dd className="font-mono text-[var(--text-primary)]">{candidate.blocks.length}</dd></div><div className="flex justify-between"><dt>Train disruption</dt><dd className="font-mono text-[var(--text-primary)]">{candidate.trainDisruptionMinutes} min</dd></div></dl>
-              </article>
-            ))}
-          </div>
+        <section className="rounded border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] p-5 text-center" aria-labelledby="empty-title">
+          <h2 id="empty-title" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-primary)]">No plan candidates yet</h2>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">Generate a plan from the Block Planner to create API-backed candidates and an auditable sanction chain.</p>
         </section>
       )}
 

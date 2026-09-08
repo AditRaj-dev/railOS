@@ -60,6 +60,9 @@ const queryKeys = {
   analytics: {
     summary: ['analytics', 'summary'] as const,
   },
+  trains: {
+    all: ['trains'] as const,
+  },
   events: {
     since: (sequence: number) => ['events', 'since', sequence] as const,
   },
@@ -208,6 +211,17 @@ export function useDefects(filter?: {
     queryKey: queryKeys.maintenance.defectsWithFilter(filter),
     queryFn: () => api.fetchDefects(filter),
     staleTime: 2 * 60 * 1000,
+  });
+}
+
+/**
+ * Fetch live train movements.
+ */
+export function useTrains(): UseQueryResult<unknown[], api.RailOSApiError> {
+  return useQuery({
+    queryKey: queryKeys.trains.all,
+    queryFn: () => api.fetchTrains(),
+    staleTime: 60 * 1000,
   });
 }
 
@@ -526,15 +540,15 @@ export function useUpdateWorkAssignment(): UseMutationResult<
  * Create an emergency incident.
  */
 export function useCreateEmergency(): UseMutationResult<
-  unknown,
+  api.EmergencyCreatedResponse,
   api.RailOSApiError,
   {
     title: string;
     corridorId: string;
-    sectionId: string;
-    assetId: string;
-    severity: string;
-    durationMinutes: number;
+    sectionId?: string;
+    assetId?: string;
+    severity?: string;
+    durationMinutes?: number;
   }
 > {
   const queryClient = useQueryClient();
@@ -557,7 +571,7 @@ export function useGenerateReplanning(): UseMutationResult<
   {
     parentPlanId: string;
     emergencyId: string;
-    nowMinute: number;
+    nowMinute?: number;
     reason: string;
   }
 > {

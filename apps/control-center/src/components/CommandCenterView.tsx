@@ -1,15 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRailOSStore } from '../store/railosStore';
-import { useAnalyticsSummary } from '@/lib/queries';
+import { useAnalyticsSummary, useMaintenanceTasks, useBlockPlans, useNetworkCatalog, useCreateEmergency } from '@/lib/queries';
+import { toDisplayTask, toDisplayBlock, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import { MetricCard, RiskBadge, DepartmentBadge } from './RailwayComponents';
-import { 
-  AlertTriangle, 
-  Clock, 
-  ShieldAlert, 
-  CheckCircle2, 
+import {
+  AlertTriangle,
+  Clock,
+  ShieldAlert,
+  CheckCircle2,
   Activity,
   ArrowRight,
   TrendingUp,
@@ -19,79 +20,92 @@ import {
 export const CommandCenterView: React.FC = () => {
   const router = useRouter();
   const { data: liveAnalytics } = useAnalyticsSummary();
-  const { 
-    tasks,
-    activePlan, 
-    setActiveScreen, 
-    setSelectedTaskId,
-    setSelectedBlockId,
-    triggerEmergencyFlaw,
-    isEmergencyActive
-  } = useRailOSStore();
+  const { data: tasksData } = useMaintenanceTasks();
+  const { data: plansData } = useBlockPlans();
+  const { data: catalog } = useNetworkCatalog();
+  const { setSelectedTaskId, setSelectedBlockId } = useRailOSStore();
+  const createEmergency = useCreateEmergency();
+  const [emergencyId, setEmergencyId] = useState<string | null>(null);
 
-  const criticalTasks = tasks.filter(t => t.severity === 'CRITICAL' || t.riskScore >= 85);
-  const overdueTasks = tasks.filter(t => t.priorityBand === 'P0_EMERGENCY');
-  const activeBlocks = activePlan.blocks.filter(b => b.status === 'ACTIVE' || b.status === 'PLANNED');
+  const sectionNames = useMemo(() => buildSectionNameMap(catalog?.sections || []), [catalog]);
+  const tasks = useMemo(() => {
+    const rawTasks = (tasksData?.tasks || []) as Record<string, unknown>[];
+    return rawTasks.map((t) => toDisplayTask(t, sectionNames));
+  }, [tasksData, sectionNames]);
+  const activePlan = useMemo(() => pickActivePlan(plansData?.plans || []), [plansData]);
+  const activeBlocks = useMemo(
+    () => (activePlan?.blocks || []).map((b) => toDisplayBlock(b, sectionNames)),
+    [activePlan, sectionNames]
+  );
+
+  const criticalTasks = tasks.filter((t) => t.severity === 'CRITICAL');
+  const overdueTasks = tasks.filter((t) => t.severity === 'CRITICAL' && t.status === 'PENDING');
 
   const displayCritical = liveAnalytics?.criticalDefects !== undefined ? liveAnalytics.criticalDefects : criticalTasks.length;
-  const displayDebt = liveAnalytics?.maintenanceDebt ? `${liveAnalytics.maintenanceDebt} hrs` : "76.5%";
+  const displayDebt = liveAnalytics?.maintenanceDebt ? `${liveAnalytics.maintenanceDebt} hrs` : `${tasks.length} open`;
+
+  const handleInjectEmergency = () => {
+    createEmergency.mutate(
+      {
+        title: 'USFD ultrasonic crack detection — immediate rail fracture risk',
+        corridorId: 'GZB-ALJN',
+        severity: 'CRITICAL',
+        durationMinutes: 55,
+      },
+      { onSuccess: (data) => setEmergencyId(data.id) }
+    );
+  };
 
   return (
     <div className="space-y-4">
       {/* 5-Second Situation Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-2.5" aria-label="Situation summary">
-        <MetricCard 
-          label="Critical Defects" 
-          value={displayCritical} 
-          subValue="Immediate Action Required" 
+        <MetricCard
+          label="Critical Defects"
+          value={displayCritical}
+          subValue="Immediate Action Required"
           status={displayCritical > 0 ? "critical" : "normal"}
           icon={AlertTriangle}
-          trend="+1 in 2 hrs"
         />
-        <MetricCard 
-          label="Overdue Backlog" 
-          value={overdueTasks.length} 
-          subValue="Safety Violations Pending" 
+        <MetricCard
+          label="Overdue Backlog"
+          value={overdueTasks.length}
+          subValue="Highest-Priority Pending"
           status={overdueTasks.length > 0 ? "caution" : "normal"}
           icon={Clock}
-          trend="30 km/h TSR"
         />
-        <MetricCard 
-          label="Active & Planned Blocks" 
-          value={activeBlocks.length} 
-          subValue="2 Possession Windows" 
+        <MetricCard
+          label="Active & Planned Blocks"
+          value={activeBlocks.length}
+          subValue={activePlan ? `Plan ${activePlan.planId} v${activePlan.planVersion}` : 'No plan generated yet'}
           status="highlight"
           icon={ShieldAlert}
-          trend="88.4% Utilization"
         />
-        <MetricCard 
-          label="Corridor Pressure" 
-          value="148%" 
-          subValue="NDLS-ALJN Quad-Track" 
+        <MetricCard
+          label="Corridor Pressure"
+          value={liveAnalytics?.trafficPressure ? `${liveAnalytics.trafficPressure}%` : '—'}
+          subValue="Network Traffic Pressure"
           status="caution"
           icon={Activity}
-          trend="Line Saturation"
         />
-        <MetricCard 
-          label="Maintenance Debt" 
-          value={displayDebt} 
-          subValue="Reduction Target Achieved" 
+        <MetricCard
+          label="Maintenance Debt"
+          value={displayDebt}
+          subValue="Open Maintenance Load"
           status="normal"
           icon={TrendingUp}
-          trend="-24.5 hrs"
         />
-        <MetricCard 
-          label="Fleet Availability" 
-          value="94.2%" 
-          subValue="Power & Signal Online" 
+        <MetricCard
+          label="Open Tasks"
+          value={liveAnalytics?.tasks ?? tasks.length}
+          subValue="Across All Departments"
           status="normal"
           icon={CheckCircle2}
-          trend="Nominal"
         />
       </div>
 
-      {/* Emergency Simulation Trigger Banner */}
-      {isEmergencyActive ? (
+      {/* Emergency Injection */}
+      {emergencyId ? (
         <div
           className="p-3.5 rounded border flex items-center justify-between animate-pulse"
           style={{
@@ -103,15 +117,15 @@ export const CommandCenterView: React.FC = () => {
             <ShieldAlert className="w-5 h-5" style={{ color: `var(--status-critical-fg)` }} />
             <div>
               <div className="text-sm font-bold font-mono" style={{ color: `var(--status-critical-text)` }}>
-                CRITICAL EMERGENCY FLAW DETECTED: Rail Fracture at Km 1332/08 (Down Line)
+                Emergency recorded — dynamic replanning required
               </div>
               <div className="text-xs opacity-80" style={{ color: `var(--status-critical-text)` }}>
-                Acoustic vibration threshold breached. Caution Order 0 km/h (Stop Dead). Dynamic Replanning required immediately.
+                Recorded against the live API. Open the planner to generate a replan around it.
               </div>
             </div>
           </div>
           <button
-            onClick={() => router.push('/planner')}
+            onClick={() => router.push(`/planner?emergencyId=${encodeURIComponent(emergencyId)}`)}
             className="min-h-11 px-3 py-1.5 text-slate-950 text-xs font-mono font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
             style={{ backgroundColor: `var(--status-critical-fg)` }}
           >
@@ -122,22 +136,23 @@ export const CommandCenterView: React.FC = () => {
         <div className="p-2.5 rounded border border-slate-800 bg-slate-900/60 flex items-center justify-between text-xs font-mono">
           <div className="flex items-center gap-2 text-slate-300">
             <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: `var(--status-ok-fg)` }} />
-            <span className="text-slate-400">DEMO INJECTION:</span>
-            <span>Simulate sudden USFD ultrasonic crack detection to trigger live replanning workflow.</span>
+            <span className="text-slate-400">EMERGENCY INJECTION:</span>
+            <span>Record a sudden USFD ultrasonic crack detection against the live API to trigger replanning.</span>
           </div>
           <button
-            onClick={triggerEmergencyFlaw}
-            className="min-h-11 px-2.5 py-1 text-slate-950 rounded text-[11px] font-mono font-bold flex items-center gap-1 transition-colors"
+            onClick={handleInjectEmergency}
+            disabled={createEmergency.isPending}
+            className="min-h-11 px-2.5 py-1 text-slate-950 rounded text-[11px] font-mono font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
             style={{ backgroundColor: `var(--status-warning-fg)` }}
           >
-            <AlertTriangle className="w-3 h-3" /> Inject Emergency Defect
+            <AlertTriangle className="w-3 h-3" /> {createEmergency.isPending ? 'Recording…' : 'Inject Emergency Defect'}
           </button>
         </div>
       )}
 
       {/* Operational Hierarchy */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        
+
         {/* Immediate Risk Column */}
         <div className="rounded border border-slate-800 bg-slate-900/90 p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -147,7 +162,7 @@ export const CommandCenterView: React.FC = () => {
                 1. Immediate Risk & Defects
               </h2>
             </div>
-            <button 
+            <button
               onClick={() => router.push('/maintenance')}
               className="text-[11px] font-mono text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
@@ -156,6 +171,11 @@ export const CommandCenterView: React.FC = () => {
           </div>
 
           <div className="space-y-2.5">
+            {tasks.length === 0 && (
+              <div className="p-3 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded">
+                No open maintenance tasks.
+              </div>
+            )}
             {tasks.slice(0, 3).map((task) => (
               <button type="button"
                 key={task.id}
@@ -191,7 +211,7 @@ export const CommandCenterView: React.FC = () => {
                 2. Possessions & Corridors
               </h2>
             </div>
-            <button 
+            <button
               onClick={() => router.push('/timeline')}
               className="text-[11px] font-mono text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
@@ -200,7 +220,12 @@ export const CommandCenterView: React.FC = () => {
           </div>
 
           <div className="space-y-2.5">
-            {activePlan.blocks.map((block) => (
+            {activeBlocks.length === 0 && (
+              <div className="p-3 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded">
+                No possession blocks in the active plan.
+              </div>
+            )}
+            {activeBlocks.map((block) => (
               <button type="button"
                 key={block.id}
                 onClick={() => {
@@ -231,11 +256,11 @@ export const CommandCenterView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {block.departments.map(d => (
-                    <DepartmentBadge key={d} dept={d} />
+                  {block.departments.map((d, i) => (
+                    <DepartmentBadge key={`${d}-${i}`} dept={d} />
                   ))}
                   <span className="text-[10px] font-mono text-slate-400 ml-auto">
-                    {block.tasks.length} Tasks Bundled
+                    {block.taskIds.length} Tasks Bundled
                   </span>
                 </div>
               </button>
@@ -243,57 +268,54 @@ export const CommandCenterView: React.FC = () => {
           </div>
         </div>
 
-        {/* Recommended Actions & Optimizer Column */}
+        {/* Plan Warnings & Actions Column */}
         <div className="rounded border border-slate-800 bg-slate-900/90 p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2">
               <Cpu className="w-4 h-4 text-sky-400" />
             <h2 className="text-sm font-mono font-bold uppercase tracking-wider text-slate-200">
-                3. Coordinated Actions
+                3. Plan Warnings & Actions
               </h2>
             </div>
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
-              style={{
-                backgroundColor: `var(--status-info-bg)`,
-                color: `var(--status-info-text)`,
-                borderColor: `var(--status-info-border)`,
-              }}
-            >
-              Active: {activePlan.mode}
-            </span>
+            {activePlan && (
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded border"
+                style={{
+                  backgroundColor: `var(--status-info-bg)`,
+                  color: `var(--status-info-text)`,
+                  borderColor: `var(--status-info-border)`,
+                }}
+              >
+                {activePlan.objectiveProfile}
+              </span>
+            )}
           </div>
 
-          <div className="p-3 rounded border border-slate-800 bg-slate-950/70 space-y-2">
-            <div className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `var(--status-info-fg)` }} />
-              Coordinated Shadow Block Recommendation
+          {!activePlan ? (
+            <div className="p-3 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded">
+              No plan generated yet. Run the optimizer from the Block Planner.
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Combine S&T Point Machine Overhaul (Pt 204B) into the TRD 25kV Catenary Isolation window between 13:45 and 15:00 on the GZB Up Line.
-            </p>
-            <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-mono">
-              <span style={{ color: `var(--status-ok-fg)` }}>Headway Lull: 85m</span>
-              <span className="text-slate-400">Saved: 60m duplicate line hold</span>
+          ) : activePlan.warnings.length === 0 ? (
+            <div className="p-3 rounded border border-slate-800 bg-slate-950/70 text-xs font-mono text-slate-400">
+              No solver warnings on the active plan.
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              {activePlan.warnings.slice(0, 5).map((w, i) => (
+                <div key={i} className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-[11px] font-mono text-amber-300 leading-relaxed">
+                  {w}
+                </div>
+              ))}
+            </div>
+          )}
 
-          <div className="p-3 rounded border border-slate-800 bg-slate-950/70 space-y-2">
-            <div className="text-xs font-mono text-slate-300 font-bold flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `var(--status-warning-fg)` }} />
-              Emergency Weld Clamping (Km 1324)
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Pre-approved 90-minute traffic possession required before 16:55 to avoid delaying Howrah Rajdhani Express (12302).
-            </p>
-            <button
-              onClick={() => router.push('/planner')}
-              className="w-full min-h-11 mt-2 py-1.5 text-slate-950 font-mono text-xs font-bold rounded flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              style={{ backgroundColor: `var(--status-info-fg)` }}
-            >
-              Review in Block Planner <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <button
+            onClick={() => router.push('/planner')}
+            className="w-full min-h-11 mt-2 py-1.5 text-slate-950 font-mono text-xs font-bold rounded flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            style={{ backgroundColor: `var(--status-info-fg)` }}
+          >
+            Review in Block Planner <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
       </div>

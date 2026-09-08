@@ -8,6 +8,7 @@ interface ModalProps {
   description?: string;
   onClose: () => void;
   children: ReactNode;
+  maxWidthClassName?: string;
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -20,7 +21,7 @@ const FOCUSABLE_SELECTOR = [
 ].join(',');
 
 /** Modal primitive with labelled dialog semantics, Escape handling, and focus containment. */
-export function Modal({ open, title, description, onClose, children }: ModalProps) {
+export function Modal({ open, title, description, onClose, children, maxWidthClassName = 'max-w-lg' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -78,7 +79,7 @@ export function Modal({ open, title, description, onClose, children }: ModalProp
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="w-full max-w-lg rounded border border-[var(--border-strong)] bg-[var(--bg-panel)] p-5 shadow-[var(--shadow-modal)]"
+        className={`w-full ${maxWidthClassName} max-h-[90vh] overflow-y-auto rounded border border-[var(--border-strong)] bg-[var(--bg-panel)] p-5 shadow-[var(--shadow-modal)]`}
       >
         <div className="flex items-start justify-between gap-4">
           <div>

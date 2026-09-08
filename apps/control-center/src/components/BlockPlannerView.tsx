@@ -1,15 +1,22 @@
 'use client';
 
-import React from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useRailOSStore } from '../store/railosStore';
 import { ObjectiveMode } from '../types/railos';
 import { DepartmentBadge } from './RailwayComponents';
-import * as api from '../lib/api';
-import { 
-  Sparkles, 
-  Cpu, 
-  ArrowRight, 
+import {
+  useBlockPlans,
+  useGeneratePlan,
+  useApprovePlan,
+  useGenerateReplanning,
+  useNetworkCatalog,
+} from '@/lib/queries';
+import { toDisplayBlock, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
+import {
+  Sparkles,
+  Cpu,
+  ArrowRight,
   ShieldAlert,
   HelpCircle,
   FileCheck2,
@@ -18,52 +25,66 @@ import {
 
 export const BlockPlannerView: React.FC = () => {
   const router = useRouter();
-  const [safetyViolations, setSafetyViolations] = React.useState<string[]>([]);
-  const { 
-    candidates, 
-    selectedMode, 
-    setSelectedMode, 
-    activePlan, 
-    isGeneratingPlan, 
-    plannerStage, 
-    generatePlan,
-    approvePlan,
-    approvedCandidate,
-    selectedBlockId,
-    setSelectedBlockId,
-    replanEmergency,
-    isEmergencyActive
-  } = useRailOSStore();
+  const searchParams = useSearchParams();
+  const pendingEmergencyId = searchParams.get('emergencyId');
 
-  const handleRunOptimizer = async () => {
+  const [safetyViolations, setSafetyViolations] = useState<string[]>([]);
+  const [selectedMode, setSelectedMode] = useState<ObjectiveMode>('BALANCED');
+  const { selectedBlockId, setSelectedBlockId } = useRailOSStore();
+
+  const { data: catalog } = useNetworkCatalog();
+  const plansQuery = useBlockPlans();
+  const generateMutation = useGeneratePlan();
+  const approveMutation = useApprovePlan();
+  const replanMutation = useGenerateReplanning();
+
+  const sectionNames = useMemo(() => buildSectionNameMap(catalog?.sections || []), [catalog]);
+
+  const candidatesForMode = useMemo(
+    () => (plansQuery.data?.plans || []).filter((p) => p.objectiveProfile === selectedMode),
+    [plansQuery.data, selectedMode]
+  );
+  const activePlan = pickActivePlan(candidatesForMode);
+  const blocks = useMemo(
+    () => (activePlan?.blocks || []).map((b) => toDisplayBlock(b, sectionNames)),
+    [activePlan, sectionNames]
+  );
+  const selectedBlock = blocks.find((b) => b.id === selectedBlockId) || blocks[0];
+
+  const handleRunOptimizer = () => {
     setSafetyViolations([]);
-    generatePlan(selectedMode);
-
-    try {
-      await api.generateOptimization({
+    generateMutation.mutate(
+      {
         corridorIds: ['GZB-ALJN'],
         objectiveProfile: selectedMode,
         planningHorizon: new Date().toISOString(),
-      });
-    } catch (err: any) {
-      if (err?.code === 'PLAN_FAILED_AUDIT' && err?.details?.violations) {
-        setSafetyViolations(err.details.violations);
+      },
+      {
+        onError: (err) => {
+          const details = (err as { details?: { violations?: string[] } }).details;
+          if (err.code === 'PLAN_FAILED_AUDIT' && details?.violations) {
+            setSafetyViolations(details.violations);
+          }
+        },
       }
-    }
+    );
   };
 
-  const handleApprove = async () => {
-    approvePlan(activePlan);
-    if (activePlan?.id) {
-      try {
-        await api.approvePlan(activePlan.id);
-      } catch {
-        // Fallback gracefully for demo
-      }
-    }
+  const handleApprove = () => {
+    if (!activePlan) return;
+    approveMutation.mutate({ planId: activePlan.planId });
   };
 
-  const selectedBlock = activePlan.blocks.find(b => b.id === selectedBlockId) || activePlan.blocks[0];
+  const handleReplan = () => {
+    if (!activePlan || !pendingEmergencyId) return;
+    replanMutation.mutate({
+      parentPlanId: activePlan.planId,
+      emergencyId: pendingEmergencyId,
+      reason: 'Emergency defect injected from Command Center',
+    });
+  };
+
+  const isApproved = activePlan?.status === 'APPROVED';
 
   return (
     <div className="space-y-4">
@@ -76,7 +97,7 @@ export const BlockPlannerView: React.FC = () => {
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Planning Horizon: <span className="text-slate-200 font-mono">Today 12:00 – 24:00 (12 hrs)</span> • Corridor: <span className="text-slate-200 font-mono">NDLS–TDL Trunk</span>
+            Planning Horizon: <span className="text-slate-200 font-mono">Today 12:00 – 24:00 (12 hrs)</span> • Corridor: <span className="text-slate-200 font-mono">GZB–ALJN</span>
           </p>
         </div>
 
@@ -102,12 +123,12 @@ export const BlockPlannerView: React.FC = () => {
 
           <button
             onClick={handleRunOptimizer}
-            disabled={isGeneratingPlan}
+            disabled={generateMutation.isPending}
             className="ml-3 px-4 py-1.5 text-white text-xs font-mono font-bold rounded flex items-center gap-2 shadow transition-all disabled:opacity-50"
-            style={{ backgroundColor: isGeneratingPlan ? '#555555' : `var(--status-ok-fg)` }}
+            style={{ backgroundColor: generateMutation.isPending ? '#555555' : `var(--status-ok-fg)` }}
           >
             <Sparkles className="w-4 h-4" style={{ color: `var(--status-warning-fg)` }} />
-            {isGeneratingPlan ? 'Solving...' : 'Run Optimizer'}
+            {generateMutation.isPending ? 'Solving...' : 'Run Optimizer'}
           </button>
         </div>
       </div>
@@ -137,7 +158,7 @@ export const BlockPlannerView: React.FC = () => {
         </div>
       )}
 
-      {isGeneratingPlan && (
+      {generateMutation.isPending && (
         <div
           className="p-3 rounded border flex items-center gap-3 animate-pulse"
           style={{
@@ -146,11 +167,11 @@ export const BlockPlannerView: React.FC = () => {
           }}
         >
           <Cpu className="w-4 h-4 animate-spin" style={{ color: `var(--status-info-fg)` }} />
-          <span className="text-xs font-mono" style={{ color: `var(--status-info-text)` }}>{plannerStage}</span>
+          <span className="text-xs font-mono" style={{ color: `var(--status-info-text)` }}>Solving Multi-Possession Schedule under Headway Constraints…</span>
         </div>
       )}
 
-      {isEmergencyActive && (
+      {pendingEmergencyId && (
         <div
           className="p-3.5 rounded border flex items-center justify-between"
           style={{
@@ -162,19 +183,20 @@ export const BlockPlannerView: React.FC = () => {
             <ShieldAlert className="w-5 h-5 animate-bounce" style={{ color: `var(--status-critical-fg)` }} />
             <div>
               <div className="text-xs font-bold font-mono" style={{ color: `var(--status-critical-text)` }}>
-                CRITICAL RAIL FRACTURE (Km 1332/08) DETECTED
+                Emergency {pendingEmergencyId} pending replan
               </div>
               <div className="text-[11px] opacity-80" style={{ color: `var(--status-critical-text)` }}>
-                Corridor speed restricted to 0 km/h. Click to shift scheduled maintenance and create emergency possession.
+                {activePlan ? 'Shift scheduled maintenance around this emergency and create an emergency possession.' : 'Generate a plan first, then replan around this emergency.'}
               </div>
             </div>
           </div>
           <button
-            onClick={replanEmergency}
-            className="px-3 py-1.5 text-white text-xs font-mono font-bold rounded flex items-center gap-1.5 transition-opacity hover:opacity-80"
+            onClick={handleReplan}
+            disabled={!activePlan || replanMutation.isPending}
+            className="px-3 py-1.5 text-white text-xs font-mono font-bold rounded flex items-center gap-1.5 transition-opacity hover:opacity-80 disabled:opacity-50"
             style={{ backgroundColor: `var(--status-critical-fg)` }}
           >
-            Execute Dynamic Replan <ArrowRight className="w-3.5 h-3.5" />
+            {replanMutation.isPending ? 'Replanning…' : 'Execute Dynamic Replan'} <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -184,19 +206,26 @@ export const BlockPlannerView: React.FC = () => {
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div>
               <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
-                Generated Possession Windows ({activePlan.blocks.length})
+                Generated Possession Windows ({blocks.length})
               </h3>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                Version: <span className="font-mono" style={{ color: `var(--status-info-fg)` }}>{activePlan.version}</span> • Disruption: <span className="font-mono" style={{ color: `var(--status-warning-fg)` }}>{activePlan.trainDisruptionMinutes} mins</span>
+                {activePlan ? (
+                  <>
+                    Version: <span className="font-mono" style={{ color: `var(--status-info-fg)` }}>v{activePlan.planVersion}</span> • Status: <span className="font-mono" style={{ color: `var(--status-warning-fg)` }}>{activePlan.status}</span>
+                  </>
+                ) : (
+                  'No plan generated for this objective yet.'
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleApprove}
-                className="px-3 py-1 text-xs font-mono font-bold rounded flex items-center gap-1.5 border transition-all text-white"
+                disabled={!activePlan || isApproved || approveMutation.isPending}
+                className="px-3 py-1 text-xs font-mono font-bold rounded flex items-center gap-1.5 border transition-all text-white disabled:cursor-not-allowed"
                 style={
-                  approvedCandidate?.version === activePlan.version
+                  isApproved
                     ? {
                         backgroundColor: `var(--status-ok-fg)`,
                         borderColor: `var(--status-ok-fg)`,
@@ -208,13 +237,18 @@ export const BlockPlannerView: React.FC = () => {
                 }
               >
                 <FileCheck2 className="w-3.5 h-3.5" />
-                {approvedCandidate?.version === activePlan.version ? 'Approved & Dispatched' : 'Approve Plan'}
+                {isApproved ? 'Approved & Dispatched' : approveMutation.isPending ? 'Approving…' : 'Approve Plan'}
               </button>
             </div>
           </div>
 
           <div className="space-y-3">
-            {activePlan.blocks.map((block) => {
+            {blocks.length === 0 && (
+              <div className="p-4 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded">
+                Run the optimizer to generate possession windows for this objective.
+              </div>
+            )}
+            {blocks.map((block) => {
               const isSelected = block.id === selectedBlock?.id;
               return (
                 <div
@@ -259,12 +293,12 @@ export const BlockPlannerView: React.FC = () => {
 
                   <div className="flex items-center justify-between text-xs font-mono pt-2 border-t border-slate-800/80">
                     <div className="flex items-center gap-1.5">
-                      {block.departments.map(d => (
-                        <DepartmentBadge key={d} dept={d} />
+                      {block.departments.map((d, i) => (
+                        <DepartmentBadge key={`${d}-${i}`} dept={d} />
                       ))}
                     </div>
                     <div className="text-slate-400">
-                      Utilization: <span className="text-slate-100 font-bold">{block.utilizationRatePct}%</span>
+                      Tasks: <span className="text-slate-100 font-bold">{block.taskIds.length}</span>
                     </div>
                   </div>
                 </div>
@@ -288,7 +322,7 @@ export const BlockPlannerView: React.FC = () => {
             <div className="flex items-center gap-2">
               <HelpCircle className="w-4 h-4 text-sky-400" />
               <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-100">
-                Why This Block? (Explainability)
+                Plan Metrics & Warnings
               </h3>
             </div>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
@@ -296,7 +330,7 @@ export const BlockPlannerView: React.FC = () => {
             </span>
           </div>
 
-          {selectedBlock ? (
+          {selectedBlock && activePlan ? (
             <div className="space-y-3.5">
               <div className="p-3 rounded border border-slate-800 bg-slate-950 text-xs font-mono space-y-1.5">
                 <div className="flex justify-between text-slate-400">
@@ -308,52 +342,49 @@ export const BlockPlannerView: React.FC = () => {
                   <span className="text-emerald-400">{selectedBlock.startTime} – {selectedBlock.endTime}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>Risk Score Reduction:</span>
-                  <span className="text-emerald-400 font-bold">-{selectedBlock.riskReductionScore} pts</span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Passenger Impact:</span>
-                  <span className="text-slate-200 font-bold">{selectedBlock.passengerDisruptionMins} mins</span>
+                  <span>Bundled Tasks:</span>
+                  <span className="text-slate-200 font-bold">{selectedBlock.taskIds.length}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                  Mathematical & Operational Rationale:
+                  Solver Metrics:
                 </div>
-
-                <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-xs space-y-1">
-                  <div className="font-mono font-bold text-sky-400 text-[11px]">1. Bundling Efficiency</div>
-                  <div className="text-slate-300 text-[11px] leading-relaxed">
-                    {selectedBlock.whyThisBlock.bundlingEfficiency}
+                {Object.keys(activePlan.metrics || {}).length === 0 ? (
+                  <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-[11px] text-slate-500 italic">
+                    No metrics reported for this plan.
                   </div>
-                </div>
-
-                <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-xs space-y-1">
-                  <div className="font-mono font-bold text-emerald-400 text-[11px]">2. Headway Gap Exploitation</div>
-                  <div className="text-slate-300 text-[11px] leading-relaxed">
-                    {selectedBlock.whyThisBlock.gapExploitation}
+                ) : (
+                  <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-xs font-mono space-y-1">
+                    {Object.entries(activePlan.metrics).map(([k, v]) => (
+                      <div key={k} className="flex justify-between text-slate-400">
+                        <span>{k}</span>
+                        <span className="text-slate-200">{typeof v === 'number' ? v.toFixed(2) : String(v)}</span>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                )}
 
-                <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-xs space-y-1">
-                  <div className="font-mono font-bold text-amber-400 text-[11px]">3. Acute Risk Neutralized</div>
-                  <div className="text-slate-300 text-[11px] leading-relaxed">
-                    {selectedBlock.whyThisBlock.criticalRiskNeutralized}
-                  </div>
+                <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider pt-1">
+                  Solver Warnings:
                 </div>
-
-                <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-xs space-y-1">
-                  <div className="font-mono font-bold text-sky-400 text-[11px]">4. Traffic Isolation Protocol</div>
-                  <div className="text-slate-300 text-[11px] leading-relaxed font-mono">
-                    {selectedBlock.isolationProtocol}
+                {activePlan.warnings.length === 0 ? (
+                  <div className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-[11px] text-slate-500 italic">
+                    None.
                   </div>
-                </div>
+                ) : (
+                  activePlan.warnings.map((w, i) => (
+                    <div key={i} className="p-2.5 rounded border border-slate-800/80 bg-slate-950/70 text-[11px] text-amber-300 leading-relaxed">
+                      {w}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           ) : (
             <div className="text-slate-500 text-xs font-mono text-center py-8">
-              Select a block to inspect explainability metadata.
+              Generate a plan and select a block to inspect its metrics.
             </div>
           )}
         </div>
