@@ -1,0 +1,10 @@
+{
+  "name": "@railos/design-tokens",
+  "version": "1.0.0",
+  "description": "RailOS cross-platform design tokens for Next.js Control Center and Flutter Field App",
+  "main": "dist/railos_tokens.ts",
+  "style": "dist/railos_tokens.css",
+  "scripts": {
+    "build": "python generate.py"
+  }
+}

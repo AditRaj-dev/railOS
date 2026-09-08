@@ -16,6 +16,9 @@ from .enums import (
     BlockType,
     Compatibility,
     Department,
+    EvidenceKind,
+    EvidenceStatus,
+    GeoVerdict,
     LineConfig,
     MachineType,
     ObjectiveProfile,
@@ -25,6 +28,8 @@ from .enums import (
     TaskType,
     Track,
     TrainClass,
+    UserRole,
+    WorkExecutionStatus,
 )
 
 
@@ -414,3 +419,131 @@ class Plan(BaseModel):
     solverStatus: str = "UNKNOWN"
     runtime: dict[str, float | str] = Field(default_factory=dict)
     provenance: str = ""
+
+
+# --- field evidence and execution contracts ----------------------------------
+
+
+class GeoSample(BaseModel):
+    timestampUtc: str
+    latitude: float
+    longitude: float
+    altitudeMeters: float | None = None
+    accuracyMeters: float
+    speedMps: float | None = None
+    bearingDegrees: float | None = None
+    isMocked: bool = False
+
+
+class EvidenceRequirement(BaseModel):
+    requirementId: str
+    kind: EvidenceKind
+    required: bool = True
+    minDurationSeconds: int | None = None
+    maxDurationSeconds: int | None = 90
+    targetRadiusMeters: float = 100.0
+    targetAccuracyMeters: float = 50.0
+
+
+class WorkStep(BaseModel):
+    stepId: str
+    taskId: str
+    stepIndex: int
+    title: str
+    description: str = ""
+    requiresPhoto: bool = True
+    requiresVideo: bool = False
+    targetLatitude: float
+    targetLongitude: float
+    targetRadiusMeters: float = 100.0
+    status: WorkExecutionStatus = WorkExecutionStatus.READY
+    evidenceId: str | None = None
+
+
+class EvidenceTargetSnapshot(BaseModel):
+    latitude: float
+    longitude: float
+    radiusMeters: float = 100.0
+    sectionCode: str = ""
+    kmPost: str = ""
+
+
+class EvidenceManifestV1(BaseModel):
+    manifestVersion: str = "1.0"
+    evidenceId: str
+    taskId: str
+    stepId: str
+    supervisorId: str
+    kind: EvidenceKind
+    captureStartTimeUtc: str
+    captureEndTimeUtc: str | None = None
+    originalSha256: str
+    proofSha256: str
+    originalSizeBytes: int
+    proofSizeBytes: int
+    mediaProperties: dict[str, Any] = Field(default_factory=dict)
+    targetLocation: EvidenceTargetSnapshot
+    locationSamples: list[GeoSample] = Field(default_factory=list)
+    geoVerdict: GeoVerdict
+    distanceToTargetMeters: float | None = None
+    exceptionReason: str | None = None
+    deviceInfo: dict[str, Any] = Field(default_factory=dict)
+    clientCreatedTimeUtc: str
+    signedAtUtc: str | None = None
+    serverSignature: str | None = None
+
+
+class EvidenceItem(BaseModel):
+    evidenceId: str
+    taskId: str
+    stepId: str
+    supervisorId: str
+    kind: EvidenceKind
+    status: EvidenceStatus = EvidenceStatus.DRAFT
+    originalStorageKey: str | None = None
+    proofStorageKey: str | None = None
+    originalSha256: str | None = None
+    proofSha256: str | None = None
+    originalSizeBytes: int | None = None
+    proofSizeBytes: int | None = None
+    captureTimeUtc: str
+    startLatitude: float
+    startLongitude: float
+    gpsAccuracyMeters: float
+    distanceToTargetMeters: float | None = None
+    geoVerdict: GeoVerdict
+    exceptionReason: str | None = None
+    reviewerId: str | None = None
+    reviewNotes: str | None = None
+    reviewedAt: str | None = None
+    canonicalManifest: EvidenceManifestV1 | None = None
+    ed25519Signature: str | None = None
+    createdTimeUtc: str = ""
+    updatedTimeUtc: str = ""
+
+
+class SupervisorAreaAssignment(BaseModel):
+    assignmentId: str
+    supervisorId: str
+    fieldAreaId: str
+    areaName: str = ""
+    sectionCodes: list[str] = Field(default_factory=list)
+    authorizedFrom: str
+    authorizedUntil: str
+    active: bool = True
+
+
+class EmergencyReport(BaseModel):
+    reportId: str
+    supervisorId: str
+    sectionCode: str
+    kmPost: str
+    latitude: float
+    longitude: float
+    severity: Severity = Severity.IMR
+    hazardType: str
+    description: str
+    photoEvidenceId: str | None = None
+    reportedAtUtc: str
+    status: str = "OPEN"
+
