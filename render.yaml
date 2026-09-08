@@ -14,6 +14,8 @@ services:
         value: 8000
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: PYTHONPATH
+        value: "/app"
       - key: RAILOS_STORAGE_BACKEND
         value: postgres # Connects to Neon PostgreSQL
       - key: DATABASE_URL

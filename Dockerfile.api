@@ -9,12 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy python project definition and packages
+# Copy python project definition, packages, and integration adapters
 COPY pyproject.toml ./
 COPY packages/ ./packages/
 COPY config/ ./config/
 COPY datasets/ ./datasets/
 COPY schemas/ ./schemas/
+COPY integrations/ ./integrations/
 COPY apps/api/ ./apps/api/
 
 # Install python dependencies
@@ -24,7 +25,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "railos_api.main:app", "--app-dir", "apps/api", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python -m uvicorn railos_api.main:app --app-dir apps/api --host 0.0.0.0 --port ${PORT:-8000}"]
