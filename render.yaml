@@ -1,10 +1,13 @@
+# Render Infrastructure Blueprint — RailOS Backend API
+# Plan: Free Tier (0.1 CPU, 512 MB RAM, spins down after 15 min inactivity)
 services:
   - type: web
     name: railos-api
     runtime: docker
     dockerfilePath: Dockerfile.api
     dockerContext: .
-    plan: free
+    plan: free # Render Free Instance Type
+    region: oregon # or frankfurt / ohio / singapore
     healthCheckPath: /docs
     envVars:
       - key: PORT
@@ -12,15 +15,16 @@ services:
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: RAILOS_STORAGE_BACKEND
-        value: postgres
+        value: postgres # Connects to Neon PostgreSQL
       - key: DATABASE_URL
-        sync: false # Set to your Neon PostgreSQL connection string
+        sync: false # Set to your Neon PostgreSQL connection string in Render Dashboard
       - key: RAILOS_JWT_SECRET
-        generateValue: true # Render will auto-generate a secure random secret
+        generateValue: true # Render automatically generates a cryptographically secure 256-bit secret
       - key: RAILOS_CORS_ORIGINS
-        value: "https://*.vercel.app,http://localhost:3000"
+        value: "https://*.vercel.app,http://localhost:3000" # Allows Vercel frontend domains
       - key: ENABLE_SYNTHETIC_AUTH
         value: "true"
+      # Neon / S3 Object Storage for Field Flaw Photographs & USFD Evidence
       - key: NEON_STORAGE_BUCKET
         sync: false
       - key: NEON_STORAGE_KEY
