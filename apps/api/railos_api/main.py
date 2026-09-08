@@ -601,18 +601,29 @@ def generate(request:PlanRequest,idempotency_key:str|None=Header(None,alias="Ide
     candidates=[port.generate(state.world(),profile) for profile in (ObjectiveProfile.SAFETY_FIRST,ObjectiveProfile.BALANCED,ObjectiveProfile.OPERATIONS_FIRST)]
     if candidates and all("INFEASIBLE" in p.solverStatus.upper() for p in candidates):
         raise HTTPException(422,{"code":"SOLVER_INFEASIBLE","message":"optimizer found no feasible plan","details":{"warnings":[w for p in candidates for w in p.warnings]}})
+    # audit() violations are genuine hard-constraint breaches and must block.
+    # plan.warnings already carries the model's own advisory obligations
+    # (e.g. "HC-003: TASK needs a Permit To Work under the power block") for
+    # every power/T351 block — that is expected paperwork, not a violation,
+    # and the CLI renders it separately for exactly this reason. Track audit
+    # violations in their own dict instead of re-matching "HC-" substrings
+    # inside the merged warnings list, or every realistic plan gets rejected.
+    audit_violations_by_plan: dict[str, list[str]] = {}
     try:
         from optimizer.audit import audit
         world=state.world()
         for plan in candidates:
             try:
                 violations=audit(world,plan)
-                if violations: plan.warnings.extend([f"{v.code}: {v.detail}" for v in violations])
+                if violations:
+                    formatted=[f"{v.code}: {v.detail}" for v in violations]
+                    plan.warnings.extend(formatted)
+                    audit_violations_by_plan[plan.planId]=formatted
             except (KeyError,ValueError): pass
     except (ImportError,AttributeError,TypeError): pass
-    blocking_violations=[w for p in candidates for w in p.warnings if any(x in w for x in ["HC-","PLAN","RECOMPUTE"])]
-    if candidates and all(p.warnings for p in candidates) and blocking_violations:
-        raise HTTPException(422,{"code":"PLAN_FAILED_AUDIT","message":"all candidate plans failed safety audit","details":{"violations":blocking_violations[:10]}})
+    if candidates and len(audit_violations_by_plan)==len(candidates):
+        all_violations=[w for vs in audit_violations_by_plan.values() for w in vs]
+        raise HTTPException(422,{"code":"PLAN_FAILED_AUDIT","message":"all candidate plans failed safety audit","details":{"violations":all_violations[:10]}})
     with state.transaction():
         for plan in candidates: state.plans[plan.planId]=copy.deepcopy(plan); state.plan_versions[f"{plan.planId}:v{plan.planVersion}"]=copy.deepcopy(plan)
         run_id=f"RUN-{len(state.runs)+1:06d}"; run={"id":run_id,"status":"COMPLETED","solverStatus":[p.solverStatus for p in candidates],"candidatePlanIds":[p.planId for p in candidates],"createdAt":datetime.now(timezone.utc).isoformat(),"synthetic":True}; state.runs[run_id]=run; state.emit("PLAN_GENERATED",run_id,run,user.user_id)

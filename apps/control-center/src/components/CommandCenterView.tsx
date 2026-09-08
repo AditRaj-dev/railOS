@@ -49,7 +49,7 @@ export const CommandCenterView: React.FC = () => {
       {
         title: 'USFD ultrasonic crack detection — immediate rail fracture risk',
         corridorId: 'GZB-ALJN',
-        severity: 'CRITICAL',
+        severity: 'IMR',
         durationMinutes: 55,
       },
       { onSuccess: (data) => setEmergencyId(data.id) }

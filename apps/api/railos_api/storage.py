@@ -172,13 +172,21 @@ class S3ObjectStore(ObjectStore):
         from botocore.config import Config
 
         self.bucket = bucket_name
+        # Virtual-hosted-style ("bucket.endpoint") requires DNS that resolves
+        # an arbitrary <bucket>.<host> to the object store -- true for real
+        # AWS S3, but not for MinIO, most self-hosted S3-compatible stores,
+        # or a plain custom endpoint_url, where it fails with
+        # EndpointConnectionError before a single request is even sent.
+        # Path-style ("endpoint/bucket") works everywhere a custom endpoint
+        # is used; "auto" only for real AWS S3 (no endpoint_url override).
+        addressing_style = "path" if endpoint_url else "auto"
         self.s3_client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
             region_name=region_name,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+            config=Config(signature_version="s3v4", s3={"addressing_style": addressing_style}),
         )
 
     def initiate_multipart_upload(self, key: str, content_type: str = "application/octet-stream") -> str:
