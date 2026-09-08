@@ -64,6 +64,26 @@
     {"stationId":"STN_DER","code":"DER","name":"Dadri","sectionIds":["SEC_GZB_DER","SEC_DER_KRJ"],"geometry":{"type":"Point","coordinates":[77.5550,28.5900]},"planningEnabled":true},
     {"stationId":"STN_KRJ","code":"KRJ","name":"Khurja Junction","sectionIds":["SEC_DER_KRJ","SEC_KRJ_SMQ"],"geometry":{"type":"Point","coordinates":[77.8500,28.2500]},"planningEnabled":true},
     {"stationId":"STN_SMQ","code":"SMQ","name":"Somna","sectionIds":["SEC_KRJ_SMQ","SEC_SMQ_ALJN"],"geometry":{"type":"Point","coordinates":[77.9300,27.9700]},"planningEnabled":true},
-    {"stationId":"STN_ALJN","code":"ALJN","name":"Aligarh Junction","sectionIds":["SEC_SMQ_ALJN"],"geometry":{"type":"Point","coordinates":[78.0880,27.8974]},"planningEnabled":true}
+    {"stationId":"STN_ALJN","code":"ALJN","name":"Aligarh Junction","sectionIds":["SEC_SMQ_ALJN"],"geometry":{"type":"Point","coordinates":[78.0880,27.8974]},"planningEnabled":true},
+    {"stationId":"STN_FZR","code":"FZR","name":"Firozpur","sectionIds":["DEMO_FZR_LDH"],"geometry":{"type":"Point","coordinates":[74.61,30.93]},"planningEnabled":false},
+    {"stationId":"STN_LDH","code":"LDH","name":"Ludhiana","sectionIds":["DEMO_FZR_LDH"],"geometry":{"type":"Point","coordinates":[75.86,30.90]},"planningEnabled":false},
+    {"stationId":"STN_AGC","code":"AGC","name":"Agra Cantt","sectionIds":["DEMO_AGC_MTJ"],"geometry":{"type":"Point","coordinates":[78.01,27.18]},"planningEnabled":false},
+    {"stationId":"STN_MTJ","code":"MTJ","name":"Mathura Junction","sectionIds":["DEMO_AGC_MTJ"],"geometry":{"type":"Point","coordinates":[77.67,27.49]},"planningEnabled":false},
+    {"stationId":"STN_BCT","code":"BCT","name":"Mumbai Central","sectionIds":["DEMO_BCT_BRC"],"geometry":{"type":"Point","coordinates":[72.83,18.96]},"planningEnabled":false},
+    {"stationId":"STN_BRC","code":"BRC","name":"Vadodara","sectionIds":["DEMO_BCT_BRC"],"geometry":{"type":"Point","coordinates":[73.18,22.31]},"planningEnabled":false},
+    {"stationId":"STN_ADI","code":"ADI","name":"Ahmedabad","sectionIds":["DEMO_ADI_RJT"],"geometry":{"type":"Point","coordinates":[72.57,23.02]},"planningEnabled":false},
+    {"stationId":"STN_RJT","code":"RJT","name":"Rajkot","sectionIds":["DEMO_ADI_RJT"],"geometry":{"type":"Point","coordinates":[70.80,22.30]},"planningEnabled":false},
+    {"stationId":"STN_CSMT","code":"CSMT","name":"Mumbai CSMT","sectionIds":["DEMO_CSMT_PUNE"],"geometry":{"type":"Point","coordinates":[72.88,18.94]},"planningEnabled":false},
+    {"stationId":"STN_PUNE","code":"PUNE","name":"Pune","sectionIds":["DEMO_CSMT_PUNE"],"geometry":{"type":"Point","coordinates":[73.86,18.52]},"planningEnabled":false},
+    {"stationId":"STN_BSL","code":"BSL","name":"Bhusaval","sectionIds":["DEMO_BSL_NGP"],"geometry":{"type":"Point","coordinates":[75.78,21.05]},"planningEnabled":false},
+    {"stationId":"STN_NGP","code":"NGP","name":"Nagpur","sectionIds":["DEMO_BSL_NGP"],"geometry":{"type":"Point","coordinates":[79.09,21.15]},"planningEnabled":false},
+    {"stationId":"STN_SC","code":"SC","name":"Secunderabad","sectionIds":["DEMO_SC_KZJ"],"geometry":{"type":"Point","coordinates":[78.50,17.44]},"planningEnabled":false},
+    {"stationId":"STN_KZJ","code":"KZJ","name":"Kazipet","sectionIds":["DEMO_SC_KZJ"],"geometry":{"type":"Point","coordinates":[79.52,17.98]},"planningEnabled":false},
+    {"stationId":"STN_BZA","code":"BZA","name":"Vijayawada","sectionIds":["DEMO_BZA_GDR"],"geometry":{"type":"Point","coordinates":[80.63,16.51]},"planningEnabled":false},
+    {"stationId":"STN_GDR","code":"GDR","name":"Gudur","sectionIds":["DEMO_BZA_GDR"],"geometry":{"type":"Point","coordinates":[79.85,14.15]},"planningEnabled":false},
+    {"stationId":"STN_MAS","code":"MAS","name":"Chennai Central","sectionIds":["DEMO_MAS_JTJ"],"geometry":{"type":"Point","coordinates":[80.27,13.08]},"planningEnabled":false},
+    {"stationId":"STN_JTJ","code":"JTJ","name":"Jolarpettai","sectionIds":["DEMO_MAS_JTJ"],"geometry":{"type":"Point","coordinates":[78.57,12.57]},"planningEnabled":false},
+    {"stationId":"STN_MDU","code":"MDU","name":"Madurai","sectionIds":["DEMO_MDU_TEN"],"geometry":{"type":"Point","coordinates":[78.12,9.93]},"planningEnabled":false},
+    {"stationId":"STN_TEN","code":"TEN","name":"Tirunelveli","sectionIds":["DEMO_MDU_TEN"],"geometry":{"type":"Point","coordinates":[77.70,8.73]},"planningEnabled":false}
   ]
 }
