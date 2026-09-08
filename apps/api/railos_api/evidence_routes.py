@@ -83,19 +83,48 @@ class FieldEvidenceState:
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Default field supervisor account
+        # Default field supervisor accounts — one per department (ENGG/SNT/TRD),
+        # matching railos_model.Department, so /work/assignments/mine scopes each
+        # supervisor to their own department's maintenance tasks instead of every
+        # department's. All three share the demo password for convenience.
         sup_pwd_hash = hash_password("Field@123")
+        corridor_sections = ["SEC_GZB_DER", "SEC_DER_KRJ", "SEC_KRJ_SMQ", "SEC_SMQ_ALJN"]
         self.users["sup-01"] = {
             "userId": "sup-01",
             "employeeId": "EMP901",
             "name": "Rajesh Kumar (SSE/P-Way)",
             "role": "SUPERVISOR",
+            "department": "ENGG",
             "passwordHash": sup_pwd_hash,
             "email": "rajesh.kumar@railos.gov.in",
             "active": True,
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
-        self.assignments["sup-01"] = ["SEC_KRJ_SMQ", "GZB-ALJN", "NDLS-GZB"]
+        self.assignments["sup-01"] = corridor_sections
+        self.users["sup-02"] = {
+            "userId": "sup-02",
+            "employeeId": "EMP902",
+            "name": "Meena Iyer (SSE/Signal)",
+            "role": "SUPERVISOR",
+            "department": "SNT",
+            "passwordHash": sup_pwd_hash,
+            "email": "meena.iyer@railos.gov.in",
+            "active": True,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+        self.assignments["sup-02"] = corridor_sections
+        self.users["sup-03"] = {
+            "userId": "sup-03",
+            "employeeId": "EMP903",
+            "name": "Arjun Nair (SSE/TRD)",
+            "role": "SUPERVISOR",
+            "department": "TRD",
+            "passwordHash": sup_pwd_hash,
+            "email": "arjun.nair@railos.gov.in",
+            "active": True,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+        self.assignments["sup-03"] = corridor_sections
         # Demo work steps for TSK-0001 are seeded by the Postgres-backed
         # `state` repository (see Repository._seed in main.py) so they persist
         # across restarts alongside evidence_items and upload_sessions.
@@ -264,6 +293,7 @@ def get_me(current_user: UserAccount = Depends(get_current_user)):
         "name": user.get("name", current_user.name),
         "role": current_user.role,
         "email": user.get("email"),
+        "department": user.get("department"),
         "assignedSections": assigned,
         "active": user.get("active", True),
     }
@@ -288,6 +318,7 @@ def create_supervisor(
         "employeeId": req.employee_id,
         "name": req.name,
         "role": req.role.value,
+        "department": req.department,
         "passwordHash": pwd_hash,
         "email": req.email,
         "phone": req.phone,
@@ -319,6 +350,7 @@ def list_supervisors(_: UserAccount = Depends(require_role("ADMIN", "CONTROL_OFF
         if u.get("role") in {"SUPERVISOR", "FIELD_SUPERVISOR"}:
             items.append({
                 "userId": uid,
+                "department": u.get("department"),
                 "employeeId": u.get("employeeId"),
                 "name": u.get("name"),
                 "email": u.get("email"),
@@ -338,14 +370,20 @@ def get_my_assignments(
     longitude: float | None = Query(None),
     current_user: UserAccount = Depends(get_current_user),
 ):
-    """Get assigned tasks and macro steps for the authenticated supervisor."""
+    """Get assigned tasks and macro steps for the authenticated supervisor,
+    scoped to their own department (ENGG/SNT/TRD) — an SSE/P-Way supervisor
+    sees track work, not signal or traction tasks, matching how field staff
+    are actually organised by department, not just by section."""
     from .main import state
 
     assigned_sections = set(evidence_state.assignments.get(current_user.user_id, []))
+    user_department = evidence_state.users.get(current_user.user_id, {}).get("department")
     tasks = []
 
     for t in state.tasks.values():
         task_data = t.model_dump(by_alias=True, mode="json")
+        if user_department and task_data.get("department") != user_department:
+            continue
         task_id = task_data.get("taskId")
         steps = _steps_for_task(state, task_id)
 

@@ -81,10 +81,14 @@ flutter pub get && flutter run --dart-define=RAILOS_API_BASE=http://10.0.2.2:800
 
 Seed accounts (created automatically on first run):
 
-| Employee ID | Password | Role | Use for |
-|---|---|---|---|
-| `EMP001` | `Admin@123` | ADMIN | supervisor administration, everything |
-| `EMP901` | `Field@123` | SUPERVISOR | field app login, evidence submission |
+| Employee ID | Password | Role | Department | Use for |
+|---|---|---|---|---|
+| `EMP001` | `Admin@123` | ADMIN | — | supervisor administration, everything |
+| `EMP901` | `Field@123` | SUPERVISOR | ENGG (Permanent Way) | field app login, track/civil evidence |
+| `EMP902` | `Field@123` | SUPERVISOR | SNT (Signal & Telecom) | field app login, signalling evidence |
+| `EMP903` | `Field@123` | SUPERVISOR | TRD (Traction) | field app login, OHE/traction evidence |
+
+`/api/v1/work/assignments/mine` scopes each supervisor's assigned tasks to their own department — an ENGG supervisor never sees SNT or TRD maintenance tasks, matching how field staff are actually organised.
 
 ---
 

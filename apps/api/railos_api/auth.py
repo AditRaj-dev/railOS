@@ -70,6 +70,9 @@ class CreateSupervisorRequest(AuthDTO):
     phone: str | None = None
     role: UserRole = UserRole.SUPERVISOR
     assigned_section_codes: list[str] = Field(default_factory=list)
+    # railos_model.Department value (ENGG/SNT/TRD) — scopes /work/assignments/mine
+    # to this supervisor's own department instead of every department's tasks.
+    department: str | None = None
 
 
 class UpdateSupervisorAreasRequest(AuthDTO):
