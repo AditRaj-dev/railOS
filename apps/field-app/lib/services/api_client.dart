@@ -44,11 +44,14 @@ class RailOSApiClient {
   final String baseUrl;
   final OfflineEvidenceQueue queue;
 
-  // 10.0.2.2 = emulator host loopback; a physical device can use
-  // --dart-define=RAILOS_API_BASE=http://127.0.0.1:8000 with adb reverse.
+  // Points at the deployed Render backend by default. For local dev against
+  // an emulator, override with --dart-define=RAILOS_API_BASE=http://10.0.2.2:8000
+  // (10.0.2.2 = emulator host loopback); a physical device on the same LAN as
+  // a local server can use --dart-define=RAILOS_API_BASE=http://127.0.0.1:8000
+  // with adb reverse.
   static const _defaultBase = String.fromEnvironment(
     'RAILOS_API_BASE',
-    defaultValue: 'http://10.0.2.2:8000',
+    defaultValue: 'https://railos-api.onrender.com',
   );
 
   RailOSApiClient({String? baseUrl, OfflineEvidenceQueue? queue})

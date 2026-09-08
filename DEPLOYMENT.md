@@ -49,11 +49,20 @@ docker compose up --build -d
 
 ## 3. Flutter Android Field App Build
 
-To build the release APK for the Android Field App:
+The field app's API base URL now defaults to the deployed Render backend
+(`https://railos-api.onrender.com`), so a plain release build already points
+at production:
 
 ```bash
 cd apps/field-app
 flutter pub get
+flutter build apk --release
+```
+
+To point at a different backend instead (a staging deploy, or a local
+server for testing), override the default:
+
+```bash
 flutter build apk --release --dart-define=RAILOS_API_BASE=https://<your-backend-api-url>
 ```
 
