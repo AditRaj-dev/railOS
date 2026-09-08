@@ -105,6 +105,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       });
     },
     onExpired: () => {
+      // A failure here can be for a refresh token a concurrent call already
+      // rotated past (the in-flight dedup only covers callers that overlap in
+      // time; a staggered caller can still capture a token, get delayed, and
+      // fail against it after a sibling call already succeeded). Don't tear
+      // down a session a sibling call has already legitimately established.
+      if (get().status === 'authenticated') return;
       clearRefreshTimer();
       clearPersistedRefreshToken();
       set({ session: null, status: 'unauthenticated' });
@@ -164,7 +170,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       }
       set({ status: 'restoring' });
       try {
-        const result = await api.authRefresh(refreshToken);
+        const result = await api.refreshSession(refreshToken);
         const session = {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
@@ -180,6 +186,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           await get().restoreSession();
         });
       } catch {
+        // Same staggered-caller race as onExpired above: this refreshToken may
+        // already have been rotated past by a concurrent success.
+        if (get().status === 'authenticated') return;
         clearPersistedRefreshToken();
         api.setAuthSession(null);
         set({ session: null, status: 'unauthenticated' });

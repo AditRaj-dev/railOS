@@ -325,6 +325,22 @@ export async function authRefresh(refreshToken: string): Promise<AuthLoginResult
   });
 }
 
+// The refresh token is single-use and rotates on every call — the server invalidates
+// it the instant one request redeems it. Two callers can legitimately race for it (the
+// mount-time restoreSession() call and a transparent 401 retry from a parallel query
+// both firing on page load); without de-duping, the loser gets REFRESH_TOKEN_INVALID
+// and tears down the session the winner just established. Share one in-flight call.
+let refreshInFlight: Promise<AuthLoginResult> | null = null;
+
+export function refreshSession(refreshToken: string): Promise<AuthLoginResult> {
+  if (!refreshInFlight) {
+    refreshInFlight = authRefresh(refreshToken).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
 export async function authLogout(refreshToken: string): Promise<void> {
   await fetchApi('/api/v1/auth/logout', {
     method: 'POST',
@@ -348,7 +364,7 @@ function toAuthSession(result: AuthLoginResult): AuthSession {
 async function tryRefreshSession(): Promise<boolean> {
   if (!authSession?.refreshToken) return false;
   try {
-    const result = await authRefresh(authSession.refreshToken);
+    const result = await refreshSession(authSession.refreshToken);
     const next = toAuthSession(result);
     authSession = next;
     onSessionRefreshed?.(next);
