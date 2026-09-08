@@ -210,6 +210,10 @@ app = FastAPI(title="RailOS API",version="1.0.0",description="Synthetic Hackatho
 # Local synthetic mode only: the control-center dev server is a separate origin.
 app.add_middleware(CORSMiddleware, allow_origins=[o for o in os.getenv("RAILOS_CORS_ORIGINS","http://localhost:3000,http://127.0.0.1:3000").split(",") if o], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+from .evidence_routes import router as evidence_router
+app.include_router(evidence_router)
+
+
 def auth(user:str|None=Header(None,alias="X-RailOS-User"), role:str|None=Header(None,alias="X-RailOS-Role")):
     if not user: raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
     if role not in VALID_ROLES: raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})

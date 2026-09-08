@@ -535,7 +535,7 @@ class SupervisorAreaAssignment(BaseModel):
 
 class EmergencyReport(BaseModel):
     reportId: str
-    supervisorId: str
+    supervisorId: str = ""
     sectionCode: str
     kmPost: str
     latitude: float
@@ -544,6 +544,7 @@ class EmergencyReport(BaseModel):
     hazardType: str
     description: str
     photoEvidenceId: str | None = None
-    reportedAtUtc: str
+    reportedAtUtc: str = ""
     status: str = "OPEN"
+
 

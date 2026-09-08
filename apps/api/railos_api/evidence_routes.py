@@ -1,0 +1,737 @@
+"""FastAPI router for RailOS Field Evidence, Auth, Supervisor Admin, and Verification."""
+
+from __future__ import annotations
+
+import os
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel, ConfigDict, Field
+from railos_model import (
+    EmergencyReport,
+    EvidenceItem,
+    EvidenceKind,
+    EvidenceManifestV1,
+    EvidenceRequirement,
+    EvidenceStatus,
+    GeoSample,
+    GeoVerdict,
+    ManifestSigner,
+    Severity,
+    SupervisorAreaAssignment,
+    UserRole,
+    WorkExecutionStatus,
+    WorkStep,
+)
+
+from .auth import (
+    AuthDTO,
+    CreateSupervisorRequest,
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UpdateSupervisorAreasRequest,
+    UserAccount,
+    create_access_token,
+    create_refresh_token,
+    get_current_user,
+    hash_password,
+    hash_token,
+    require_role,
+    verify_password,
+)
+from .storage import MemoryObjectStore, get_object_store
+from .verification import EvidenceVerificationService
+
+router = APIRouter(tags=["field-evidence"])
+object_store = get_object_store()
+verification_service = EvidenceVerificationService(object_store)
+
+
+# -----------------------------------------------------------------------------
+# In-Memory State for Auth, Assignments, Evidence, and Work Steps
+# -----------------------------------------------------------------------------
+class FieldEvidenceState:
+    def __init__(self):
+        self.users: dict[str, dict[str, Any]] = {}
+        self.refresh_tokens: dict[str, dict[str, Any]] = {}  # token_hash -> token_info
+        self.assignments: dict[str, list[str]] = {}  # user_id -> [section_code, ...]
+        self.work_steps: dict[str, list[WorkStep]] = {}  # task_id -> [WorkStep, ...]
+        self.evidence_items: dict[str, EvidenceItem] = {}  # evidence_id -> EvidenceItem
+        self.upload_sessions: dict[str, dict[str, Any]] = {}  # session_id -> session_info
+        self.emergency_reports: dict[str, EmergencyReport] = {}  # report_id -> EmergencyReport
+        self.idempotency: dict[str, Any] = {}
+        self._seed()
+
+    def _seed(self):
+        # Default admin account
+        admin_pwd_hash = hash_password("Admin@123")
+        self.users["admin-01"] = {
+            "userId": "admin-01",
+            "employeeId": "EMP001",
+            "name": "Chief Controller",
+            "role": "ADMIN",
+            "passwordHash": admin_pwd_hash,
+            "email": "controller@railos.gov.in",
+            "active": True,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Default field supervisor account
+        sup_pwd_hash = hash_password("Field@123")
+        self.users["sup-01"] = {
+            "userId": "sup-01",
+            "employeeId": "EMP901",
+            "name": "Rajesh Kumar (SSE/P-Way)",
+            "role": "SUPERVISOR",
+            "passwordHash": sup_pwd_hash,
+            "email": "rajesh.kumar@railos.gov.in",
+            "active": True,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+        self.assignments["sup-01"] = ["SEC_KRJ_SMQ", "GZB-ALJN", "NDLS-GZB"]
+
+        # Default sample work steps for demo tasks
+        self.work_steps["TSK-0001"] = [
+            WorkStep(
+                stepId="stp-101",
+                taskId="TSK-0001",
+                stepIndex=1,
+                title="Pre-work Site Inspection & Ballast Profile",
+                description="Photograph the initial ballast shoulder and check fishplate clearances.",
+                requiresPhoto=True,
+                requiresVideo=False,
+                targetLatitude=28.6139,
+                targetLongitude=77.2090,
+                targetRadiusMeters=100.0,
+                status=WorkExecutionStatus.READY,
+            ),
+            WorkStep(
+                stepId="stp-102",
+                taskId="TSK-0001",
+                stepIndex=2,
+                title="Tamping Machine Alignment & Depth Verification",
+                description="Photograph tamper tines penetrating sleeper crib to prescribed depth.",
+                requiresPhoto=True,
+                requiresVideo=False,
+                targetLatitude=28.6141,
+                targetLongitude=77.2093,
+                targetRadiusMeters=100.0,
+                status=WorkExecutionStatus.READY,
+            ),
+            WorkStep(
+                stepId="stp-103",
+                taskId="TSK-0001",
+                stepIndex=3,
+                title="Post-Tamping Final Track Geometry Walkthrough",
+                description="Continuous walkthrough video verifying cross-level, alignment, and track clear of equipment.",
+                requiresPhoto=False,
+                requiresVideo=True,
+                targetLatitude=28.6140,
+                targetLongitude=77.2091,
+                targetRadiusMeters=100.0,
+                status=WorkExecutionStatus.READY,
+            ),
+        ]
+
+
+evidence_state = FieldEvidenceState()
+
+
+# -----------------------------------------------------------------------------
+# DTOs
+# -----------------------------------------------------------------------------
+class CreateEvidenceRequest(AuthDTO):
+    evidence_id: str
+    task_id: str
+    step_id: str
+    kind: EvidenceKind
+    capture_time_utc: str
+    start_latitude: float
+    start_longitude: float
+    gps_accuracy_meters: float
+    exception_reason: str | None = None
+    idempotency_key: str | None = None
+
+
+class InitiateUploadRequest(AuthDTO):
+    storage_kind: str = "ORIGINAL"  # ORIGINAL or PROOF
+    total_bytes: int
+    content_type: str = "image/jpeg"
+    part_size_bytes: int = 8388608  # 8 MiB default
+
+
+class PartUploadPresignResponse(AuthDTO):
+    part_number: int
+    upload_url: str
+    expires_in_seconds: int = 3600
+
+
+class UploadPartItem(AuthDTO):
+    part_number: int
+    etag: str
+
+
+class CompleteUploadRequest(AuthDTO):
+    session_id: str
+    storage_kind: str
+    parts: list[UploadPartItem]
+    sha256: str
+    size_bytes: int
+
+
+class FinalizeEvidenceRequest(AuthDTO):
+    location_samples: list[GeoSample] = Field(default_factory=list)
+    device_info: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewEvidenceRequest(AuthDTO):
+    decision: str  # ACCEPT or REJECT
+    review_notes: str
+
+
+# -----------------------------------------------------------------------------
+# 1. Authentication Endpoints
+# -----------------------------------------------------------------------------
+@router.post("/api/v1/auth/login", response_model=TokenResponse)
+def login(req: LoginRequest):
+    """Authenticate supervisor with employee ID and password."""
+    user = None
+    for u in evidence_state.users.values():
+        if u.get("employeeId") == req.employee_id:
+            user = u
+            break
+
+    if not user or not verify_password(user["passwordHash"], req.password):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid employee ID or password"},
+        )
+
+    if not user.get("active", True):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "ACCOUNT_DISABLED", "message": "Account has been disabled by an administrator"},
+        )
+
+    access_token = create_access_token(user["userId"], user["role"], user["employeeId"])
+    raw_refresh, token_hash, expires_at = create_refresh_token()
+
+    evidence_state.refresh_tokens[token_hash] = {
+        "userId": user["userId"],
+        "expiresAt": expires_at,
+        "revoked": False,
+    }
+
+    return TokenResponse(
+        accessToken=access_token,
+        refreshToken=raw_refresh,
+        userId=user["userId"],
+        role=user["role"],
+        employeeId=user["employeeId"],
+        name=user["name"],
+    )
+
+
+@router.post("/api/v1/auth/refresh", response_model=TokenResponse)
+def refresh_token_endpoint(req: RefreshRequest):
+    """Rotate 30-day refresh token and issue new 15-minute access JWT."""
+    token_hash = hash_token(req.refresh_token)
+    stored = evidence_state.refresh_tokens.get(token_hash)
+    if not stored or stored.get("revoked") or stored["expiresAt"] < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "REFRESH_TOKEN_INVALID", "message": "Refresh token expired or invalid"},
+        )
+
+    # Invalidate old refresh token (token rotation)
+    stored["revoked"] = True
+
+    user = evidence_state.users.get(stored["userId"])
+    if not user or not user.get("active", True):
+        raise HTTPException(status_code=403, detail={"code": "USER_INACTIVE", "message": "User inactive"})
+
+    access_token = create_access_token(user["userId"], user["role"], user["employeeId"])
+    raw_new_refresh, new_token_hash, expires_at = create_refresh_token()
+    evidence_state.refresh_tokens[new_token_hash] = {
+        "userId": user["userId"],
+        "expiresAt": expires_at,
+        "revoked": False,
+    }
+
+    return TokenResponse(
+        accessToken=access_token,
+        refreshToken=raw_new_refresh,
+        userId=user["userId"],
+        role=user["role"],
+        employeeId=user["employeeId"],
+        name=user["name"],
+    )
+
+
+@router.post("/api/v1/auth/logout")
+def logout(req: RefreshRequest, current_user: UserAccount = Depends(get_current_user)):
+    """Revoke refresh token."""
+    token_hash = hash_token(req.refresh_token)
+    if token_hash in evidence_state.refresh_tokens:
+        evidence_state.refresh_tokens[token_hash]["revoked"] = True
+    return {"status": "logged_out"}
+
+
+@router.get("/api/v1/me")
+def get_me(current_user: UserAccount = Depends(get_current_user)):
+    """Return currently authenticated user profile and assigned sections."""
+    user = evidence_state.users.get(current_user.user_id, {})
+    assigned = evidence_state.assignments.get(current_user.user_id, [])
+    return {
+        "userId": current_user.user_id,
+        "employeeId": current_user.employee_id,
+        "name": user.get("name", current_user.name),
+        "role": current_user.role,
+        "email": user.get("email"),
+        "assignedSections": assigned,
+        "active": user.get("active", True),
+    }
+
+
+# -----------------------------------------------------------------------------
+# 2. Supervisor Admin Endpoints
+# -----------------------------------------------------------------------------
+@router.post("/api/v1/admin/supervisors")
+def create_supervisor(
+    req: CreateSupervisorRequest, _: UserAccount = Depends(require_role("ADMIN"))
+):
+    """Admin creates a new supervisor employee account."""
+    for u in evidence_state.users.values():
+        if u.get("employeeId") == req.employee_id:
+            raise HTTPException(400, {"code": "DUPLICATE_EMPLOYEE_ID", "message": "Employee ID exists"})
+
+    user_id = f"sup-{uuid.uuid4().hex[:8]}"
+    pwd_hash = hash_password(req.password)
+    evidence_state.users[user_id] = {
+        "userId": user_id,
+        "employeeId": req.employee_id,
+        "name": req.name,
+        "role": req.role.value,
+        "passwordHash": pwd_hash,
+        "email": req.email,
+        "phone": req.phone,
+        "active": True,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+    }
+    evidence_state.assignments[user_id] = list(req.assigned_section_codes)
+    return {"userId": user_id, "employeeId": req.employee_id, "name": req.name}
+
+
+@router.put("/api/v1/admin/supervisors/{supervisor_id}/areas")
+def update_supervisor_areas(
+    supervisor_id: str,
+    req: UpdateSupervisorAreasRequest,
+    _: UserAccount = Depends(require_role("ADMIN")),
+):
+    """Admin updates assigned sections for a supervisor."""
+    if supervisor_id not in evidence_state.users:
+        raise HTTPException(404, {"code": "USER_NOT_FOUND", "message": "Supervisor not found"})
+    evidence_state.assignments[supervisor_id] = list(req.section_codes)
+    return {"supervisorId": supervisor_id, "assignedSections": req.section_codes}
+
+
+@router.get("/api/v1/admin/supervisors")
+def list_supervisors(_: UserAccount = Depends(require_role("ADMIN", "CONTROL_OFFICER"))):
+    """List all supervisors and their assigned sections."""
+    items = []
+    for uid, u in evidence_state.users.items():
+        if u.get("role") in {"SUPERVISOR", "FIELD_SUPERVISOR"}:
+            items.append({
+                "userId": uid,
+                "employeeId": u.get("employeeId"),
+                "name": u.get("name"),
+                "email": u.get("email"),
+                "active": u.get("active", True),
+                "assignedSections": evidence_state.assignments.get(uid, []),
+                "createdAt": u.get("createdAt"),
+            })
+    return {"items": items, "count": len(items)}
+
+
+# -----------------------------------------------------------------------------
+# 3. Work Assignments and Emergency Reporting
+# -----------------------------------------------------------------------------
+@router.get("/api/v1/work/assignments/mine")
+def get_my_assignments(
+    latitude: float | None = Query(None),
+    longitude: float | None = Query(None),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Get assigned tasks and macro steps for the authenticated supervisor."""
+    from .main import state
+
+    assigned_sections = set(evidence_state.assignments.get(current_user.user_id, []))
+    tasks = []
+
+    for t in state.tasks.values():
+        task_data = t.model_dump(by_alias=True, mode="json")
+        task_id = task_data.get("taskId")
+        steps = evidence_state.work_steps.get(task_id, [])
+
+        # Default fallback steps if none explicitly assigned
+        if not steps:
+            steps = [
+                WorkStep(
+                    stepId=f"stp-{task_id}-1",
+                    taskId=task_id,
+                    stepIndex=1,
+                    title="Live Pre-Execution Safety & Site Photo",
+                    requiresPhoto=True,
+                    targetLatitude=28.6139,
+                    targetLongitude=77.2090,
+                    targetRadiusMeters=100.0,
+                ),
+                WorkStep(
+                    stepId=f"stp-{task_id}-2",
+                    taskId=task_id,
+                    stepIndex=2,
+                    title="Final Completion & Line Clearance Video (<=90s)",
+                    requiresPhoto=False,
+                    requiresVideo=True,
+                    targetLatitude=28.6139,
+                    targetLongitude=77.2090,
+                    targetRadiusMeters=100.0,
+                ),
+            ]
+            evidence_state.work_steps[task_id] = steps
+
+        task_data["steps"] = [s.model_dump(by_alias=True, mode="json") for s in steps]
+        task_data["executionStatus"] = "IN_PROGRESS" if any(s.status != WorkExecutionStatus.READY for s in steps) else "READY"
+        tasks.append(task_data)
+
+    return {
+        "supervisorId": current_user.user_id,
+        "assignedSections": list(assigned_sections),
+        "tasks": tasks,
+        "count": len(tasks),
+        "asOfUtc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/api/v1/emergency-reports")
+def submit_emergency_report(
+    report: EmergencyReport, current_user: UserAccount = Depends(get_current_user)
+):
+    """Supervisor registers unexpected field damage or safety hazard."""
+    from .main import state
+
+    report.supervisorId = current_user.user_id
+    report.reportedAtUtc = datetime.now(timezone.utc).isoformat()
+    evidence_state.emergency_reports[report.reportId] = report
+
+    state.emit(
+        "EMERGENCY_REPORT_CREATED",
+        report.reportId,
+        report.model_dump(by_alias=True, mode="json"),
+        actor=current_user.user_id,
+        reason=f"Field supervisor hazard report: {report.hazardType}",
+    )
+    return {"status": "reported", "reportId": report.reportId}
+
+
+# -----------------------------------------------------------------------------
+# 4. Evidence Upload and Verification Pipeline
+# -----------------------------------------------------------------------------
+@router.post("/api/v1/evidence")
+def create_evidence_item(
+    req: CreateEvidenceRequest, current_user: UserAccount = Depends(get_current_user)
+):
+    """Register intent to capture evidence, binding client UUIDv7 to step and account."""
+    from .main import state
+
+    if req.idempotency_key and req.idempotency_key in evidence_state.idempotency:
+        return evidence_state.idempotency[req.idempotency_key]
+
+    item = EvidenceItem(
+        evidenceId=req.evidence_id,
+        taskId=req.task_id,
+        stepId=req.step_id,
+        supervisorId=current_user.user_id,
+        kind=req.kind,
+        status=EvidenceStatus.UPLOAD_PENDING,
+        captureTimeUtc=req.capture_time_utc,
+        startLatitude=req.start_latitude,
+        startLongitude=req.start_longitude,
+        gpsAccuracyMeters=req.gps_accuracy_meters,
+        geoVerdict=GeoVerdict.WITHIN_RADIUS,
+        exceptionReason=req.exception_reason,
+        createdTimeUtc=datetime.now(timezone.utc).isoformat(),
+        updatedTimeUtc=datetime.now(timezone.utc).isoformat(),
+    )
+    evidence_state.evidence_items[item.evidenceId] = item
+
+    res = item.model_dump(by_alias=True, mode="json")
+    if req.idempotency_key:
+        evidence_state.idempotency[req.idempotency_key] = res
+    return res
+
+
+@router.post("/api/v1/evidence/{evidence_id}/uploads/initiate")
+def initiate_upload(
+    evidence_id: str,
+    req: InitiateUploadRequest,
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Initiate resilient multipart upload session for original or proof media."""
+    item = evidence_state.evidence_items.get(evidence_id)
+    if not item:
+        raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+
+    storage_key = f"evidence/{item.taskId}/{item.stepId}/{evidence_id}/{req.storage_kind.lower()}"
+    upload_id = object_store.initiate_multipart_upload(storage_key, req.content_type)
+    session_id = f"sess-{uuid.uuid4().hex[:12]}"
+
+    total_parts = max(1, (req.total_bytes + req.part_size_bytes - 1) // req.part_size_bytes)
+    session_data = {
+        "sessionId": session_id,
+        "evidenceId": evidence_id,
+        "storageKind": req.storage_kind,
+        "storageKey": storage_key,
+        "uploadId": upload_id,
+        "partSizeBytes": req.part_size_bytes,
+        "totalParts": total_parts,
+        "totalBytes": req.total_bytes,
+        "status": "OPEN",
+    }
+    evidence_state.upload_sessions[session_id] = session_data
+
+    return {
+        "sessionId": session_id,
+        "evidenceId": evidence_id,
+        "storageKey": storage_key,
+        "uploadId": upload_id,
+        "totalParts": total_parts,
+        "partSizeBytes": req.part_size_bytes,
+    }
+
+
+@router.post("/api/v1/evidence/{evidence_id}/uploads/parts/{part_number}/presign")
+def presign_part_upload(
+    evidence_id: str,
+    part_number: int,
+    session_id: str = Query(..., alias="sessionId"),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Generate short-lived presigned URL for direct part upload."""
+    session = evidence_state.upload_sessions.get(session_id)
+    if not session or session["evidenceId"] != evidence_id:
+        raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
+
+    url = object_store.generate_presigned_upload_part_url(
+        session["storageKey"], session["uploadId"], part_number
+    )
+    return PartUploadPresignResponse(
+        partNumber=part_number, uploadUrl=url, expiresInSeconds=3600
+    )
+
+
+@router.post("/api/v1/evidence/{evidence_id}/uploads/complete")
+def complete_upload(
+    evidence_id: str,
+    req: CompleteUploadRequest,
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Complete multipart upload session and store file metadata."""
+    session = evidence_state.upload_sessions.get(req.session_id)
+    if not session or session["evidenceId"] != evidence_id:
+        raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
+
+    parts_payload = [{"PartNumber": p.part_number, "ETag": p.etag} for p in req.parts]
+    object_store.complete_multipart_upload(session["storageKey"], session["uploadId"], parts_payload)
+    session["status"] = "COMPLETED"
+
+    item = evidence_state.evidence_items[evidence_id]
+    if req.storage_kind == "ORIGINAL":
+        item.originalStorageKey = session["storageKey"]
+        item.originalSha256 = req.sha256
+        item.originalSizeBytes = req.size_bytes
+    else:
+        item.proofStorageKey = session["storageKey"]
+        item.proofSha256 = req.sha256
+        item.proofSizeBytes = req.size_bytes
+
+    item.status = EvidenceStatus.UPLOADING
+    return {"status": "completed", "storageKey": session["storageKey"]}
+
+
+@router.post("/api/v1/evidence/{evidence_id}/uploads/abort")
+def abort_upload(
+    evidence_id: str,
+    session_id: str = Query(..., alias="sessionId"),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Abort multipart upload session."""
+    session = evidence_state.upload_sessions.pop(session_id, None)
+    if session:
+        object_store.abort_multipart_upload(session["storageKey"], session["uploadId"])
+    return {"status": "aborted"}
+
+
+@router.post("/api/v1/evidence/{evidence_id}:finalize", status_code=202)
+def finalize_evidence(
+    evidence_id: str,
+    req: FinalizeEvidenceRequest,
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Finalize evidence submission, enqueue/run durable verification, and sign manifest."""
+    from .main import state
+
+    item = evidence_state.evidence_items.get(evidence_id)
+    if not item:
+        raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+
+    item.status = EvidenceStatus.VERIFYING
+
+    # Find step target
+    target_lat = 28.6139
+    target_lon = 77.2090
+    target_radius = 100.0
+    section_code = "SEC_KRJ_SMQ"
+
+    steps = evidence_state.work_steps.get(item.taskId, [])
+    target_step = next((s for s in steps if s.stepId == item.stepId), None)
+    if target_step:
+        target_lat = target_step.targetLatitude
+        target_lon = target_step.targetLongitude
+        target_radius = target_step.targetRadiusMeters
+
+    verified_item, signed_manifest = verification_service.verify_evidence(
+        item=item,
+        target_lat=target_lat,
+        target_lon=target_lon,
+        target_radius_m=target_radius,
+        section_code=section_code,
+        location_samples=req.location_samples,
+        device_info=req.device_info,
+    )
+    evidence_state.evidence_items[evidence_id] = verified_item
+
+    # Update step status if verified
+    if target_step:
+        if verified_item.status == EvidenceStatus.VERIFIED:
+            target_step.status = WorkExecutionStatus.COMPLETED
+            target_step.evidenceId = evidence_id
+            state.emit(
+                "TASK_STEP_COMPLETED",
+                target_step.stepId,
+                target_step.model_dump(by_alias=True, mode="json"),
+                actor=current_user.user_id,
+            )
+        elif verified_item.status == EvidenceStatus.FLAGGED_REVIEW:
+            target_step.status = WorkExecutionStatus.COMPLETED_PENDING_EVIDENCE
+            target_step.evidenceId = evidence_id
+            state.emit(
+                "EVIDENCE_FLAGGED",
+                evidence_id,
+                verified_item.model_dump(by_alias=True, mode="json"),
+                actor=current_user.user_id,
+                reason=verified_item.reviewNotes or "Geospatial or media integrity discrepancy",
+            )
+
+    return verified_item.model_dump(by_alias=True, mode="json")
+
+
+@router.get("/api/v1/evidence/{evidence_id}")
+def get_evidence_details(
+    evidence_id: str, current_user: UserAccount = Depends(get_current_user)
+):
+    """Retrieve evidence details with signed media preview URLs and signature status."""
+    item = evidence_state.evidence_items.get(evidence_id)
+    if not item:
+        raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+
+    data = item.model_dump(by_alias=True, mode="json")
+    if item.originalStorageKey:
+        data["originalDownloadUrl"] = object_store.generate_presigned_download_url(item.originalStorageKey)
+    if item.proofStorageKey:
+        data["proofDownloadUrl"] = object_store.generate_presigned_download_url(item.proofStorageKey)
+
+    return data
+
+
+@router.get("/api/v1/evidence")
+def list_evidence(
+    status: str | None = None,
+    task_id: str | None = None,
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """List evidence items with optional filters."""
+    results = []
+    for item in evidence_state.evidence_items.values():
+        if status and item.status.value != status:
+            continue
+        if task_id and item.taskId != task_id:
+            continue
+        row = item.model_dump(by_alias=True, mode="json")
+        if item.proofStorageKey:
+            row["proofDownloadUrl"] = object_store.generate_presigned_download_url(item.proofStorageKey)
+        results.append(row)
+
+    return {"items": results, "count": len(results)}
+
+
+@router.post("/api/v1/evidence/{evidence_id}:review")
+def review_flagged_evidence(
+    evidence_id: str,
+    req: ReviewEvidenceRequest,
+    current_user: UserAccount = Depends(require_role("ADMIN", "CONTROL_OFFICER")),
+):
+    """Control Officer reviews flagged evidence: ACCEPT_EXCEPTION or REJECT."""
+    from .main import state
+
+    item = evidence_state.evidence_items.get(evidence_id)
+    if not item:
+        raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence not found"})
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if req.decision == "ACCEPT":
+        item.status = EvidenceStatus.ACCEPTED_EXCEPTION
+    else:
+        item.status = EvidenceStatus.REJECTED
+
+    item.reviewerId = current_user.user_id
+    item.reviewNotes = req.review_notes
+    item.reviewedAt = now_iso
+    item.updatedTimeUtc = now_iso
+
+    # Update associated task step
+    steps = evidence_state.work_steps.get(item.taskId, [])
+    step = next((s for s in steps if s.stepId == item.stepId), None)
+    if step:
+        if item.status == EvidenceStatus.ACCEPTED_EXCEPTION:
+            step.status = WorkExecutionStatus.COMPLETED
+        else:
+            step.status = WorkExecutionStatus.READY  # Retake required
+
+    state.emit(
+        "EVIDENCE_REVIEWED",
+        evidence_id,
+        item.model_dump(by_alias=True, mode="json"),
+        actor=current_user.user_id,
+        reason=f"Control officer decision: {req.decision}. Notes: {req.review_notes}",
+    )
+
+    return item.model_dump(by_alias=True, mode="json")
+
+
+@router.get("/api/v1/evidence/preview-media")
+def preview_media(key: str = Query(...)):
+    """Serve mock object store bytes for preview during tests and development."""
+    if isinstance(object_store, MemoryObjectStore):
+        try:
+            data = object_store.get_object_bytes(key)
+            meta = object_store.get_object_metadata(key)
+            content_type = meta.get("content_type", "image/jpeg")
+            return Response(content=data, media_type=content_type)
+        except KeyError:
+            raise HTTPException(404, {"code": "MEDIA_NOT_FOUND", "message": "Media not found"})
+    raise HTTPException(400, {"code": "NOT_SUPPORTED", "message": "Use presigned S3 URLs in production"})
