@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "BlockType": {
+      "description": "Ground Reality Report section 2.3.",
+      "enum": [
+        "TRAFFIC",
+        "POWER",
+        "INTEGRATED",
+        "SHADOW",
+        "DISCONNECTION",
+        "MEGA",
+        "EMERGENCY"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "Compatibility": {
+      "enum": [
+        "COMPATIBLE",
+        "SEQUENTIALLY_COMPATIBLE",
+        "CONDITIONAL",
+        "INCOMPATIBLE",
+        "STRICTLY_PROHIBITED"
+      ],
+      "title": "Compatibility",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "bundleId": {
+      "title": "Bundleid",
+      "type": "string"
+    },
+    "taskIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Taskids",
+      "type": "array"
+    },
+    "blockType": {
+      "$ref": "#/$defs/BlockType"
+    },
+    "sequence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Sequence",
+      "type": "array"
+    },
+    "requiredResourceIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Requiredresourceids",
+      "type": "array"
+    },
+    "compatibility": {
+      "$ref": "#/$defs/Compatibility",
+      "default": "COMPATIBLE"
+    },
+    "rationale": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Rationale",
+      "type": "array"
+    }
+  },
+  "required": [
+    "bundleId",
+    "taskIds",
+    "blockType"
+  ],
+  "title": "BundleCandidate",
+  "type": "object"
+}

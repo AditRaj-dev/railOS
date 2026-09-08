@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "BlockSection": {
+      "properties": {
+        "sectionId": {
+          "title": "Sectionid",
+          "type": "string"
+        },
+        "fromStation": {
+          "title": "Fromstation",
+          "type": "string"
+        },
+        "toStation": {
+          "title": "Tostation",
+          "type": "string"
+        },
+        "startM": {
+          "title": "Startm",
+          "type": "integer"
+        },
+        "endM": {
+          "title": "Endm",
+          "type": "integer"
+        },
+        "tracks": {
+          "items": {
+            "$ref": "#/$defs/Track"
+          },
+          "title": "Tracks",
+          "type": "array"
+        },
+        "mps": {
+          "default": 110,
+          "description": "max permissible speed, kmph",
+          "exclusiveMinimum": 0,
+          "title": "Mps",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sectionId",
+        "fromStation",
+        "toStation",
+        "startM",
+        "endM",
+        "tracks"
+      ],
+      "title": "BlockSection",
+      "type": "object"
+    },
+    "LineConfig": {
+      "enum": [
+        "SINGLE",
+        "DOUBLE",
+        "MULTI"
+      ],
+      "title": "LineConfig",
+      "type": "string"
+    },
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "corridorId": {
+      "title": "Corridorid",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "lineConfig": {
+      "$ref": "#/$defs/LineConfig"
+    },
+    "tracks": {
+      "items": {
+        "$ref": "#/$defs/Track"
+      },
+      "title": "Tracks",
+      "type": "array"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/BlockSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "corridorId",
+    "name",
+    "lineConfig",
+    "tracks",
+    "sections"
+  ],
+  "title": "Corridor",
+  "type": "object"
+}

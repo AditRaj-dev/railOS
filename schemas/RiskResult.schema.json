@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "current": {
+      "title": "Current",
+      "type": "number"
+    },
+    "at24h": {
+      "title": "At24H",
+      "type": "number"
+    },
+    "at72h": {
+      "title": "At72H",
+      "type": "number"
+    },
+    "trend": {
+      "title": "Trend",
+      "type": "string"
+    },
+    "maxDeferralMinutes": {
+      "title": "Maxdeferralminutes",
+      "type": "integer"
+    },
+    "basis": {
+      "default": "deterministic heuristic, not a trained model",
+      "title": "Basis",
+      "type": "string"
+    }
+  },
+  "required": [
+    "taskId",
+    "current",
+    "at24h",
+    "at72h",
+    "trend",
+    "maxDeferralMinutes"
+  ],
+  "title": "RiskResult",
+  "type": "object"
+}

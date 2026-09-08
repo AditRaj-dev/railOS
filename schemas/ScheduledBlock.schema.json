@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "BlockType": {
+      "description": "Ground Reality Report section 2.3.",
+      "enum": [
+        "TRAFFIC",
+        "POWER",
+        "INTEGRATED",
+        "SHADOW",
+        "DISCONNECTION",
+        "MEGA",
+        "EMERGENCY"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "Department": {
+      "enum": [
+        "ENGG",
+        "SNT",
+        "TRD"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "blockId": {
+      "title": "Blockid",
+      "type": "string"
+    },
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "track": {
+      "$ref": "#/$defs/Track"
+    },
+    "blockType": {
+      "$ref": "#/$defs/BlockType"
+    },
+    "start": {
+      "title": "Start",
+      "type": "integer"
+    },
+    "end": {
+      "title": "End",
+      "type": "integer"
+    },
+    "taskIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Taskids",
+      "type": "array"
+    },
+    "departments": {
+      "items": {
+        "$ref": "#/$defs/Department"
+      },
+      "title": "Departments",
+      "type": "array"
+    },
+    "opportunityId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Opportunityid"
+    }
+  },
+  "required": [
+    "blockId",
+    "sectionId",
+    "track",
+    "blockType",
+    "start",
+    "end",
+    "taskIds",
+    "departments"
+  ],
+  "title": "ScheduledBlock",
+  "type": "object"
+}

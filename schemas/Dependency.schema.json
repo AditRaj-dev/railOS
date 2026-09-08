@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "predecessorTaskId": {
+      "title": "Predecessortaskid",
+      "type": "string"
+    },
+    "successorTaskId": {
+      "title": "Successortaskid",
+      "type": "string"
+    },
+    "lagMinutes": {
+      "default": 0,
+      "title": "Lagminutes",
+      "type": "integer"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "predecessorTaskId",
+    "successorTaskId"
+  ],
+  "title": "Dependency",
+  "type": "object"
+}

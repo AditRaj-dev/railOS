@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "Severity": {
+      "description": "Defect codes used by TMS / SMMS / TDMS.",
+      "enum": [
+        "IMR",
+        "IMRW",
+        "OBS",
+        "OMS_PEAK_HIGH",
+        "POINT_SLACK_DETECTION",
+        "OHE_DROPPING_FAULT"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "defectId": {
+      "title": "Defectid",
+      "type": "string"
+    },
+    "assetId": {
+      "title": "Assetid",
+      "type": "string"
+    },
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "severityCode": {
+      "$ref": "#/$defs/Severity"
+    },
+    "detectedAtMinute": {
+      "title": "Detectedatminute",
+      "type": "integer"
+    },
+    "taskId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Taskid"
+    },
+    "repeatCount": {
+      "default": 0,
+      "title": "Repeatcount",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "defectId",
+    "assetId",
+    "sectionId",
+    "severityCode",
+    "detectedAtMinute"
+  ],
+  "title": "Defect",
+  "type": "object"
+}

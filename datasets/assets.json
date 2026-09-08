@@ -1,0 +1,137 @@
+[
+  {
+    "assetId": "TRACK_SEC_GZB_DER_UP",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "locationM": 0,
+    "criticality": 9,
+    "oheElementarySection": "OHE_ELEM_2040_DER"
+  },
+  {
+    "assetId": "TRACK_SEC_GZB_DER_DOWN",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "locationM": 0,
+    "criticality": 8,
+    "oheElementarySection": "OHE_ELEM_2040_DER"
+  },
+  {
+    "assetId": "OHE_ELEM_2040_DER",
+    "assetType": "OHE_ELEMENTARY_SECTION",
+    "sectionId": "SEC_GZB_DER",
+    "track": null,
+    "locationM": 12000,
+    "criticality": 8,
+    "oheElementarySection": null
+  },
+  {
+    "assetId": "TRACK_SEC_DER_KRJ_UP",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "locationM": 24000,
+    "criticality": 9,
+    "oheElementarySection": "OHE_ELEM_2041_KRJ"
+  },
+  {
+    "assetId": "TRACK_SEC_DER_KRJ_DOWN",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "locationM": 24000,
+    "criticality": 8,
+    "oheElementarySection": "OHE_ELEM_2041_KRJ"
+  },
+  {
+    "assetId": "OHE_ELEM_2041_KRJ",
+    "assetType": "OHE_ELEMENTARY_SECTION",
+    "sectionId": "SEC_DER_KRJ",
+    "track": null,
+    "locationM": 38000,
+    "criticality": 8,
+    "oheElementarySection": null
+  },
+  {
+    "assetId": "TRACK_SEC_KRJ_SMQ_UP",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "locationM": 52000,
+    "criticality": 9,
+    "oheElementarySection": "OHE_ELEM_2042_SMQ"
+  },
+  {
+    "assetId": "TRACK_SEC_KRJ_SMQ_DOWN",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "locationM": 52000,
+    "criticality": 8,
+    "oheElementarySection": "OHE_ELEM_2042_SMQ"
+  },
+  {
+    "assetId": "OHE_ELEM_2042_SMQ",
+    "assetType": "OHE_ELEMENTARY_SECTION",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": null,
+    "locationM": 70000,
+    "criticality": 8,
+    "oheElementarySection": null
+  },
+  {
+    "assetId": "TRACK_SEC_SMQ_ALJN_UP",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "locationM": 88000,
+    "criticality": 9,
+    "oheElementarySection": "OHE_ELEM_2043_ALJN"
+  },
+  {
+    "assetId": "TRACK_SEC_SMQ_ALJN_DOWN",
+    "assetType": "TRACK_SECTION",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "locationM": 88000,
+    "criticality": 8,
+    "oheElementarySection": "OHE_ELEM_2043_ALJN"
+  },
+  {
+    "assetId": "OHE_ELEM_2043_ALJN",
+    "assetType": "OHE_ELEMENTARY_SECTION",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": null,
+    "locationM": 107000,
+    "criticality": 8,
+    "oheElementarySection": null
+  },
+  {
+    "assetId": "POINT_102B_KRJ",
+    "assetType": "POINT",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "locationM": 52100,
+    "criticality": 10,
+    "oheElementarySection": "OHE_ELEM_2042_SMQ"
+  },
+  {
+    "assetId": "POINT_14A_DER",
+    "assetType": "POINT",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "locationM": 24300,
+    "criticality": 9,
+    "oheElementarySection": "OHE_ELEM_2041_KRJ"
+  },
+  {
+    "assetId": "AXLE_COUNTER_DER_KRJ_UP",
+    "assetType": "AXLE_COUNTER",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "locationM": 38000,
+    "criticality": 7,
+    "oheElementarySection": null
+  }
+]

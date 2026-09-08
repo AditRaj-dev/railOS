@@ -1,0 +1,38 @@
+[
+  {
+    "defectId": "DEF-9001",
+    "assetId": "TRACK_SEC_DER_KRJ_DOWN",
+    "sectionId": "SEC_DER_KRJ",
+    "severityCode": "OMS_PEAK_HIGH",
+    "detectedAtMinute": 0,
+    "taskId": "ENG-1002",
+    "repeatCount": 3
+  },
+  {
+    "defectId": "DEF-9002",
+    "assetId": "POINT_14A_DER",
+    "sectionId": "SEC_DER_KRJ",
+    "severityCode": "POINT_SLACK_DETECTION",
+    "detectedAtMinute": 0,
+    "taskId": "SNT-2002",
+    "repeatCount": 2
+  },
+  {
+    "defectId": "DEF-9003",
+    "assetId": "OHE_ELEM_2041_KRJ",
+    "sectionId": "SEC_DER_KRJ",
+    "severityCode": "OHE_DROPPING_FAULT",
+    "detectedAtMinute": 0,
+    "taskId": "TRD-3002",
+    "repeatCount": 0
+  },
+  {
+    "defectId": "DEF-9004",
+    "assetId": "POINT_102B_KRJ",
+    "sectionId": "SEC_KRJ_SMQ",
+    "severityCode": "OBS",
+    "detectedAtMinute": 0,
+    "taskId": "ENG-1004",
+    "repeatCount": 0
+  }
+]

@@ -1,0 +1,83 @@
+[
+  {
+    "rakeId": "GDS-0-01",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "windowStart": 60,
+    "windowEnd": 240,
+    "probability": 0.8,
+    "priorityWeight": 1.2
+  },
+  {
+    "rakeId": "GDS-0-02",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "windowStart": 150,
+    "windowEnd": 330,
+    "probability": 0.6,
+    "priorityWeight": 1.0
+  },
+  {
+    "rakeId": "GDS-0-03",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "windowStart": 780,
+    "windowEnd": 960,
+    "probability": 0.7,
+    "priorityWeight": 1.5
+  },
+  {
+    "rakeId": "GDS-1-01",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "windowStart": 1500,
+    "windowEnd": 1680,
+    "probability": 0.8,
+    "priorityWeight": 1.2
+  },
+  {
+    "rakeId": "GDS-1-02",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "windowStart": 1590,
+    "windowEnd": 1770,
+    "probability": 0.6,
+    "priorityWeight": 1.0
+  },
+  {
+    "rakeId": "GDS-1-03",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "windowStart": 2220,
+    "windowEnd": 2400,
+    "probability": 0.7,
+    "priorityWeight": 1.5
+  },
+  {
+    "rakeId": "GDS-2-01",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "windowStart": 2940,
+    "windowEnd": 3120,
+    "probability": 0.8,
+    "priorityWeight": 1.2
+  },
+  {
+    "rakeId": "GDS-2-02",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "windowStart": 3030,
+    "windowEnd": 3210,
+    "probability": 0.6,
+    "priorityWeight": 1.0
+  },
+  {
+    "rakeId": "GDS-2-03",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "windowStart": 3660,
+    "windowEnd": 3840,
+    "probability": 0.7,
+    "priorityWeight": 1.5
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "properties": {
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "taskId",
+    "reason"
+  ],
+  "title": "UnassignedTask",
+  "type": "object"
+}

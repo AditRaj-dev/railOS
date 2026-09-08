@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "Factor": {
+      "description": "One named, weighted contribution. Weights are never hidden.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "raw": {
+          "title": "Raw",
+          "type": "number"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        },
+        "contribution": {
+          "title": "Contribution",
+          "type": "number"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "raw",
+        "weight",
+        "contribution"
+      ],
+      "title": "Factor",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "blockId": {
+      "title": "Blockid",
+      "type": "string"
+    },
+    "start": {
+      "title": "Start",
+      "type": "integer"
+    },
+    "end": {
+      "title": "End",
+      "type": "integer"
+    },
+    "explanation": {
+      "items": {
+        "$ref": "#/$defs/Factor"
+      },
+      "title": "Explanation",
+      "type": "array"
+    }
+  },
+  "required": [
+    "taskId",
+    "blockId",
+    "start",
+    "end"
+  ],
+  "title": "Assignment",
+  "type": "object"
+}

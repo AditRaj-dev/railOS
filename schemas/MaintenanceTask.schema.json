@@ -1,0 +1,277 @@
+{
+  "$defs": {
+    "BlockType": {
+      "description": "Ground Reality Report section 2.3.",
+      "enum": [
+        "TRAFFIC",
+        "POWER",
+        "INTEGRATED",
+        "SHADOW",
+        "DISCONNECTION",
+        "MEGA",
+        "EMERGENCY"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "Department": {
+      "enum": [
+        "ENGG",
+        "SNT",
+        "TRD"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "MachineType": {
+      "enum": [
+        "BCM",
+        "CSM",
+        "UNIMAT",
+        "TRT",
+        "DGS",
+        "TOWER_WAGON",
+        "NONE"
+      ],
+      "title": "MachineType",
+      "type": "string"
+    },
+    "TaskStatus": {
+      "enum": [
+        "PENDING",
+        "PLANNED",
+        "STARTED",
+        "COMPLETED",
+        "DEFERRED"
+      ],
+      "title": "TaskStatus",
+      "type": "string"
+    },
+    "TaskType": {
+      "enum": [
+        "TAMPING",
+        "DEEP_SCREENING",
+        "RAIL_REPLACEMENT",
+        "SLEEPER_RENEWAL",
+        "TURNOUT_RENEWAL",
+        "DESTRESSING",
+        "USFD_INSPECTION",
+        "POINT_MACHINE_MAINT",
+        "TRACK_CIRCUIT_BOND",
+        "AXLE_COUNTER_CALIB",
+        "GJ_REPLACEMENT",
+        "INTERLOCKING_WORK",
+        "SNT_DISCONNECTION",
+        "SNT_RECONNECTION",
+        "OHE_INSPECTION",
+        "CATENARY_REPLACEMENT",
+        "OHE_BRACKET_ADJUST",
+        "OHE_SLEWING",
+        "TRD_ISOLATION"
+      ],
+      "title": "TaskType",
+      "type": "string"
+    },
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "taskId": {
+      "title": "Taskid",
+      "type": "string"
+    },
+    "department": {
+      "$ref": "#/$defs/Department"
+    },
+    "assetId": {
+      "title": "Assetid",
+      "type": "string"
+    },
+    "corridorId": {
+      "title": "Corridorid",
+      "type": "string"
+    },
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "track": {
+      "$ref": "#/$defs/Track"
+    },
+    "kmStart": {
+      "title": "Kmstart",
+      "type": "number"
+    },
+    "kmEnd": {
+      "title": "Kmend",
+      "type": "number"
+    },
+    "taskType": {
+      "$ref": "#/$defs/TaskType"
+    },
+    "severity": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Severity",
+      "type": "integer"
+    },
+    "criticality": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Criticality",
+      "type": "integer"
+    },
+    "dueMinute": {
+      "title": "Dueminute",
+      "type": "integer"
+    },
+    "estimatedDuration": {
+      "description": "minutes",
+      "exclusiveMinimum": 0,
+      "title": "Estimatedduration",
+      "type": "integer"
+    },
+    "durationStdDev": {
+      "default": 0,
+      "description": "minutes; drives SO-005 buffer",
+      "minimum": 0,
+      "title": "Durationstddev",
+      "type": "integer"
+    },
+    "blockRequired": {
+      "default": true,
+      "title": "Blockrequired",
+      "type": "boolean"
+    },
+    "blockType": {
+      "$ref": "#/$defs/BlockType",
+      "default": "TRAFFIC"
+    },
+    "status": {
+      "$ref": "#/$defs/TaskStatus",
+      "default": "PENDING"
+    },
+    "machineType": {
+      "$ref": "#/$defs/MachineType",
+      "default": "NONE"
+    },
+    "requiresPTW": {
+      "default": false,
+      "title": "Requiresptw",
+      "type": "boolean"
+    },
+    "requiresT351": {
+      "default": false,
+      "title": "Requirest351",
+      "type": "boolean"
+    },
+    "requiresCorrespondenceTest": {
+      "default": false,
+      "title": "Requirescorrespondencetest",
+      "type": "boolean"
+    },
+    "infringesAdjacent": {
+      "default": false,
+      "title": "Infringesadjacent",
+      "type": "boolean"
+    },
+    "hasMobileLighting": {
+      "default": true,
+      "title": "Hasmobilelighting",
+      "type": "boolean"
+    },
+    "requiresSntEscort": {
+      "default": false,
+      "title": "Requiressntescort",
+      "type": "boolean"
+    },
+    "imposesSpeedRestriction": {
+      "default": false,
+      "title": "Imposesspeedrestriction",
+      "type": "boolean"
+    },
+    "oheElementarySection": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Oheelementarysection"
+    },
+    "resourceIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Resourceids",
+      "type": "array"
+    },
+    "gangId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gangid"
+    },
+    "overdueDays": {
+      "default": 0,
+      "title": "Overduedays",
+      "type": "integer"
+    },
+    "isEmergency": {
+      "default": false,
+      "title": "Isemergency",
+      "type": "boolean"
+    },
+    "detectedAtMinute": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detectedatminute"
+    },
+    "locked": {
+      "default": false,
+      "title": "Locked",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "taskId",
+    "department",
+    "assetId",
+    "corridorId",
+    "sectionId",
+    "track",
+    "kmStart",
+    "kmEnd",
+    "taskType",
+    "severity",
+    "criticality",
+    "dueMinute",
+    "estimatedDuration"
+  ],
+  "title": "MaintenanceTask",
+  "type": "object"
+}

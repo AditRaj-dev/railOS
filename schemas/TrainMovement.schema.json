@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    },
+    "TrainClass": {
+      "enum": [
+        "RAJDHANI",
+        "VANDE_BHARAT",
+        "MAIL_EXPRESS",
+        "SUBURBAN",
+        "PASSENGER",
+        "GOODS"
+      ],
+      "title": "TrainClass",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "trainId": {
+      "title": "Trainid",
+      "type": "string"
+    },
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "track": {
+      "$ref": "#/$defs/Track"
+    },
+    "entry": {
+      "title": "Entry",
+      "type": "integer"
+    },
+    "exit": {
+      "title": "Exit",
+      "type": "integer"
+    },
+    "trainClass": {
+      "$ref": "#/$defs/TrainClass"
+    },
+    "priority": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Priority",
+      "type": "integer"
+    },
+    "delayMinutes": {
+      "default": 0,
+      "title": "Delayminutes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "trainId",
+    "sectionId",
+    "track",
+    "entry",
+    "exit",
+    "trainClass",
+    "priority"
+  ],
+  "title": "TrainMovement",
+  "type": "object"
+}

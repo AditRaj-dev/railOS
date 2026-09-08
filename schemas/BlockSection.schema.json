@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "fromStation": {
+      "title": "Fromstation",
+      "type": "string"
+    },
+    "toStation": {
+      "title": "Tostation",
+      "type": "string"
+    },
+    "startM": {
+      "title": "Startm",
+      "type": "integer"
+    },
+    "endM": {
+      "title": "Endm",
+      "type": "integer"
+    },
+    "tracks": {
+      "items": {
+        "$ref": "#/$defs/Track"
+      },
+      "title": "Tracks",
+      "type": "array"
+    },
+    "mps": {
+      "default": 110,
+      "description": "max permissible speed, kmph",
+      "exclusiveMinimum": 0,
+      "title": "Mps",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "sectionId",
+    "fromStation",
+    "toStation",
+    "startM",
+    "endM",
+    "tracks"
+  ],
+  "title": "BlockSection",
+  "type": "object"
+}

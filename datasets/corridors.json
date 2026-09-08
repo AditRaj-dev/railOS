@@ -1,0 +1,61 @@
+[
+  {
+    "corridorId": "GZB-ALJN",
+    "name": "Ghaziabad - Aligarh Junction",
+    "lineConfig": "DOUBLE",
+    "tracks": [
+      "UP",
+      "DOWN"
+    ],
+    "sections": [
+      {
+        "sectionId": "SEC_GZB_DER",
+        "fromStation": "GZB",
+        "toStation": "DER",
+        "startM": 0,
+        "endM": 24000,
+        "tracks": [
+          "UP",
+          "DOWN"
+        ],
+        "mps": 110
+      },
+      {
+        "sectionId": "SEC_DER_KRJ",
+        "fromStation": "DER",
+        "toStation": "KRJ",
+        "startM": 24000,
+        "endM": 52000,
+        "tracks": [
+          "UP",
+          "DOWN"
+        ],
+        "mps": 130
+      },
+      {
+        "sectionId": "SEC_KRJ_SMQ",
+        "fromStation": "KRJ",
+        "toStation": "SMQ",
+        "startM": 52000,
+        "endM": 88000,
+        "tracks": [
+          "UP",
+          "DOWN"
+        ],
+        "mps": 130
+      },
+      {
+        "sectionId": "SEC_SMQ_ALJN",
+        "fromStation": "SMQ",
+        "toStation": "ALJN",
+        "startM": 88000,
+        "endM": 126000,
+        "tracks": [
+          "UP",
+          "DOWN"
+        ],
+        "mps": 110
+      }
+    ]
+  }
+]

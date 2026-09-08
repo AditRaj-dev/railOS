@@ -1,0 +1,60 @@
+# Soft objective weights (Ground Reality Report section 24, SO-001..SO-008).
+# Three profiles, ONE model. A profile changes weights only -- never the algorithm.
+# Percentages from the report are the BALANCED column; the other two profiles tilt
+# the same eight terms.
+
+profiles:
+  BALANCED:
+    yield: 0.30              # SO-001 maximise critical maintenance yield
+    passenger_delay: 0.25    # SO-002 minimise passenger disruption
+    bundling: 0.15           # SO-003 maximise multi-department bundling
+    freight_detention: 0.10  # SO-004
+    overrun_risk: 0.10       # SO-005 block-burst buffer
+    deferral_debt: 0.05      # SO-006
+    sr_footprint: 0.03       # SO-007 temporary speed restriction footprint
+    machine_use: 0.02        # SO-008
+
+  SAFETY_FIRST:
+    yield: 0.42
+    passenger_delay: 0.10
+    bundling: 0.12
+    freight_detention: 0.04
+    overrun_risk: 0.14
+    deferral_debt: 0.13
+    sr_footprint: 0.03
+    machine_use: 0.02
+
+  OPERATIONS_FIRST:
+    yield: 0.16
+    passenger_delay: 0.40
+    bundling: 0.12
+    freight_detention: 0.18
+    overrun_risk: 0.08
+    deferral_debt: 0.02
+    sr_footprint: 0.03
+    machine_use: 0.01
+
+# SO-002 class weights, x10 so the objective stays integral.
+train_class_weight:
+  VANDE_BHARAT: 50
+  RAJDHANI: 50
+  SUBURBAN: 40
+  MAIL_EXPRESS: 30
+  PASSENGER: 15
+  GOODS: 10
+
+# HC-018 policy budget: how much of the corridor may sit under a temporary speed
+# restriction at the same time. Restrictions stack into capacity loss that outlives
+# every block that caused them, so the corridor carries a length budget, not a task
+# count -- four separate 300 m turnouts are not the same as one 4 km deep screening.
+speed_restriction:
+  max_concurrent_km: 5.0
+
+solver:
+  max_time_seconds: 20.0
+  # Single worker: CP-SAT with parallel workers is not bit-reproducible, and the
+  # charter requires plan metrics to be reproducible. This model solves in <1 s.
+  num_workers: 1
+  random_seed: 20260909
+  # Objective terms are integers; floats are scaled by this factor.
+  scale: 100

@@ -1,0 +1,1562 @@
+[
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 375,
+    "exit": 397,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 397,
+    "exit": 422,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 422,
+    "exit": 450,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 450,
+    "exit": 480,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1040,
+    "exit": 1062,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1062,
+    "exit": 1087,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1087,
+    "exit": 1115,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 1115,
+    "exit": 1145,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1350,
+    "exit": 1372,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1372,
+    "exit": 1397,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1397,
+    "exit": 1425,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 1425,
+    "exit": 1455,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 260,
+    "exit": 282,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 282,
+    "exit": 307,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 307,
+    "exit": 335,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 335,
+    "exit": 365,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 580,
+    "exit": 602,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 602,
+    "exit": 627,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 627,
+    "exit": 655,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 655,
+    "exit": 685,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 490,
+    "exit": 512,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 512,
+    "exit": 537,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 537,
+    "exit": 565,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 565,
+    "exit": 595,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1120,
+    "exit": 1142,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1142,
+    "exit": 1167,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1167,
+    "exit": 1195,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 1195,
+    "exit": 1225,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 425,
+    "exit": 455,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 455,
+    "exit": 483,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 483,
+    "exit": 508,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 508,
+    "exit": 530,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 1005,
+    "exit": 1035,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 1035,
+    "exit": 1063,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 1063,
+    "exit": 1088,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 1088,
+    "exit": 1110,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 1270,
+    "exit": 1300,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 1300,
+    "exit": 1328,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 1328,
+    "exit": 1353,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 1353,
+    "exit": 1375,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 330,
+    "exit": 360,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 360,
+    "exit": 388,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 388,
+    "exit": 413,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 413,
+    "exit": 435,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 685,
+    "exit": 715,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 715,
+    "exit": 743,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 743,
+    "exit": 768,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 768,
+    "exit": 790,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 555,
+    "exit": 585,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 585,
+    "exit": 613,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 613,
+    "exit": 638,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 638,
+    "exit": 660,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1815,
+    "exit": 1837,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1837,
+    "exit": 1862,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1862,
+    "exit": 1890,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 1890,
+    "exit": 1920,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 2480,
+    "exit": 2502,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 2502,
+    "exit": 2527,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 2527,
+    "exit": 2555,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 2555,
+    "exit": 2585,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 2790,
+    "exit": 2812,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 2812,
+    "exit": 2837,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 2837,
+    "exit": 2865,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 2865,
+    "exit": 2895,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1700,
+    "exit": 1722,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1722,
+    "exit": 1747,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1747,
+    "exit": 1775,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 1775,
+    "exit": 1805,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 2020,
+    "exit": 2042,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 2042,
+    "exit": 2067,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 2067,
+    "exit": 2095,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 2095,
+    "exit": 2125,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 1930,
+    "exit": 1952,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 1952,
+    "exit": 1977,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 1977,
+    "exit": 2005,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 2005,
+    "exit": 2035,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 2560,
+    "exit": 2582,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 2582,
+    "exit": 2607,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 2607,
+    "exit": 2635,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 2635,
+    "exit": 2665,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 1865,
+    "exit": 1895,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 1895,
+    "exit": 1923,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 1923,
+    "exit": 1948,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 1948,
+    "exit": 1970,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 2445,
+    "exit": 2475,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 2475,
+    "exit": 2503,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 2503,
+    "exit": 2528,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 2528,
+    "exit": 2550,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 2710,
+    "exit": 2740,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 2740,
+    "exit": 2768,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 2768,
+    "exit": 2793,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 2793,
+    "exit": 2815,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 1770,
+    "exit": 1800,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 1800,
+    "exit": 1828,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 1828,
+    "exit": 1853,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 1853,
+    "exit": 1875,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 2125,
+    "exit": 2155,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 2155,
+    "exit": 2183,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 2183,
+    "exit": 2208,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 2208,
+    "exit": 2230,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 1995,
+    "exit": 2025,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 2025,
+    "exit": 2053,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 2053,
+    "exit": 2078,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 2078,
+    "exit": 2100,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 3255,
+    "exit": 3277,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 3277,
+    "exit": 3302,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 3302,
+    "exit": 3330,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12002",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 3330,
+    "exit": 3360,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 3920,
+    "exit": 3942,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 3942,
+    "exit": 3967,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 3967,
+    "exit": 3995,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12310",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 3995,
+    "exit": 4025,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 4230,
+    "exit": 4252,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 4252,
+    "exit": 4277,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 4277,
+    "exit": 4305,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12417",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 4305,
+    "exit": 4335,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 3140,
+    "exit": 3162,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 3162,
+    "exit": 3187,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 3187,
+    "exit": 3215,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12312",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 3215,
+    "exit": 3245,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 3460,
+    "exit": 3482,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 3482,
+    "exit": 3507,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 3507,
+    "exit": 3535,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14207",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 3535,
+    "exit": 3565,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 3370,
+    "exit": 3392,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 3392,
+    "exit": 3417,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 3417,
+    "exit": 3445,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64556",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 3445,
+    "exit": 3475,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_GZB_DER",
+    "track": "UP",
+    "entry": 4000,
+    "exit": 4022,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "UP",
+    "entry": 4022,
+    "exit": 4047,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "UP",
+    "entry": 4047,
+    "exit": 4075,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64562",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "UP",
+    "entry": 4075,
+    "exit": 4105,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 3305,
+    "exit": 3335,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 3335,
+    "exit": 3363,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 3363,
+    "exit": 3388,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12001",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 3388,
+    "exit": 3410,
+    "trainClass": "VANDE_BHARAT",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 3885,
+    "exit": 3915,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 3915,
+    "exit": 3943,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 3943,
+    "exit": 3968,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12309",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 3968,
+    "exit": 3990,
+    "trainClass": "RAJDHANI",
+    "priority": 10,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 4150,
+    "exit": 4180,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 4180,
+    "exit": 4208,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 4208,
+    "exit": 4233,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12418",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 4233,
+    "exit": 4255,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 3210,
+    "exit": 3240,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 3240,
+    "exit": 3268,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 3268,
+    "exit": 3293,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "12311",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 3293,
+    "exit": 3315,
+    "trainClass": "MAIL_EXPRESS",
+    "priority": 8,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 3565,
+    "exit": 3595,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 3595,
+    "exit": 3623,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 3623,
+    "exit": 3648,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "14208",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 3648,
+    "exit": 3670,
+    "trainClass": "PASSENGER",
+    "priority": 5,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_SMQ_ALJN",
+    "track": "DOWN",
+    "entry": 3435,
+    "exit": 3465,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_KRJ_SMQ",
+    "track": "DOWN",
+    "entry": 3465,
+    "exit": 3493,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_DER_KRJ",
+    "track": "DOWN",
+    "entry": 3493,
+    "exit": 3518,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  },
+  {
+    "trainId": "64555",
+    "sectionId": "SEC_GZB_DER",
+    "track": "DOWN",
+    "entry": 3518,
+    "exit": 3540,
+    "trainClass": "SUBURBAN",
+    "priority": 7,
+    "delayMinutes": 0
+  }
+]

@@ -1,0 +1,366 @@
+{
+  "$defs": {
+    "Assignment": {
+      "properties": {
+        "taskId": {
+          "title": "Taskid",
+          "type": "string"
+        },
+        "blockId": {
+          "title": "Blockid",
+          "type": "string"
+        },
+        "start": {
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "explanation": {
+          "items": {
+            "$ref": "#/$defs/Factor"
+          },
+          "title": "Explanation",
+          "type": "array"
+        }
+      },
+      "required": [
+        "taskId",
+        "blockId",
+        "start",
+        "end"
+      ],
+      "title": "Assignment",
+      "type": "object"
+    },
+    "BlockType": {
+      "description": "Ground Reality Report section 2.3.",
+      "enum": [
+        "TRAFFIC",
+        "POWER",
+        "INTEGRATED",
+        "SHADOW",
+        "DISCONNECTION",
+        "MEGA",
+        "EMERGENCY"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "Department": {
+      "enum": [
+        "ENGG",
+        "SNT",
+        "TRD"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "Factor": {
+      "description": "One named, weighted contribution. Weights are never hidden.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "raw": {
+          "title": "Raw",
+          "type": "number"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        },
+        "contribution": {
+          "title": "Contribution",
+          "type": "number"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "raw",
+        "weight",
+        "contribution"
+      ],
+      "title": "Factor",
+      "type": "object"
+    },
+    "ObjectiveProfile": {
+      "enum": [
+        "SAFETY_FIRST",
+        "BALANCED",
+        "OPERATIONS_FIRST"
+      ],
+      "title": "ObjectiveProfile",
+      "type": "string"
+    },
+    "PlanMetrics": {
+      "properties": {
+        "blockUtilisation": {
+          "default": 0.0,
+          "title": "Blockutilisation",
+          "type": "number"
+        },
+        "maintenanceYield": {
+          "default": 0.0,
+          "title": "Maintenanceyield",
+          "type": "number"
+        },
+        "maintenanceDebt": {
+          "default": 0.0,
+          "title": "Maintenancedebt",
+          "type": "number"
+        },
+        "coordinationRatio": {
+          "default": 0.0,
+          "title": "Coordinationratio",
+          "type": "number"
+        },
+        "criticalCompletionRate": {
+          "default": 0.0,
+          "title": "Criticalcompletionrate",
+          "type": "number"
+        },
+        "trainDisruptionMinutes": {
+          "default": 0,
+          "title": "Traindisruptionminutes",
+          "type": "integer"
+        },
+        "freightDetentionMinutes": {
+          "default": 0,
+          "title": "Freightdetentionminutes",
+          "type": "integer"
+        },
+        "tasksScheduled": {
+          "default": 0,
+          "title": "Tasksscheduled",
+          "type": "integer"
+        },
+        "tasksUnassigned": {
+          "default": 0,
+          "title": "Tasksunassigned",
+          "type": "integer"
+        },
+        "srFootprintKmDays": {
+          "default": 0.0,
+          "title": "Srfootprintkmdays",
+          "type": "number"
+        }
+      },
+      "title": "PlanMetrics",
+      "type": "object"
+    },
+    "PlanStatus": {
+      "enum": [
+        "GENERATED",
+        "PROPOSED",
+        "APPROVED",
+        "SUPERSEDED"
+      ],
+      "title": "PlanStatus",
+      "type": "string"
+    },
+    "ScheduledBlock": {
+      "properties": {
+        "blockId": {
+          "title": "Blockid",
+          "type": "string"
+        },
+        "sectionId": {
+          "title": "Sectionid",
+          "type": "string"
+        },
+        "track": {
+          "$ref": "#/$defs/Track"
+        },
+        "blockType": {
+          "$ref": "#/$defs/BlockType"
+        },
+        "start": {
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "taskIds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Taskids",
+          "type": "array"
+        },
+        "departments": {
+          "items": {
+            "$ref": "#/$defs/Department"
+          },
+          "title": "Departments",
+          "type": "array"
+        },
+        "opportunityId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opportunityid"
+        }
+      },
+      "required": [
+        "blockId",
+        "sectionId",
+        "track",
+        "blockType",
+        "start",
+        "end",
+        "taskIds",
+        "departments"
+      ],
+      "title": "ScheduledBlock",
+      "type": "object"
+    },
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    },
+    "UnassignedTask": {
+      "properties": {
+        "taskId": {
+          "title": "Taskid",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "taskId",
+        "reason"
+      ],
+      "title": "UnassignedTask",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "planId": {
+      "title": "Planid",
+      "type": "string"
+    },
+    "planVersion": {
+      "title": "Planversion",
+      "type": "integer"
+    },
+    "parentPlanId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parentplanid"
+    },
+    "status": {
+      "$ref": "#/$defs/PlanStatus",
+      "default": "GENERATED"
+    },
+    "objectiveProfile": {
+      "$ref": "#/$defs/ObjectiveProfile"
+    },
+    "horizonMinutes": {
+      "title": "Horizonminutes",
+      "type": "integer"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/ScheduledBlock"
+      },
+      "title": "Blocks",
+      "type": "array"
+    },
+    "assignments": {
+      "items": {
+        "$ref": "#/$defs/Assignment"
+      },
+      "title": "Assignments",
+      "type": "array"
+    },
+    "unassigned": {
+      "items": {
+        "$ref": "#/$defs/UnassignedTask"
+      },
+      "title": "Unassigned",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "metrics": {
+      "$ref": "#/$defs/PlanMetrics"
+    },
+    "objectiveBreakdown": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Objectivebreakdown",
+      "type": "object"
+    },
+    "solverStatus": {
+      "default": "UNKNOWN",
+      "title": "Solverstatus",
+      "type": "string"
+    },
+    "runtime": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "title": "Runtime",
+      "type": "object"
+    },
+    "provenance": {
+      "default": "",
+      "title": "Provenance",
+      "type": "string"
+    }
+  },
+  "required": [
+    "planId",
+    "planVersion",
+    "objectiveProfile",
+    "horizonMinutes"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "predecessorTaskId": "SNT-2003",
+    "successorTaskId": "TRD-3003",
+    "lagMinutes": 0,
+    "reason": "HC-007 turnout renewal sequence (Joint Procedure Order)"
+  },
+  {
+    "predecessorTaskId": "TRD-3003",
+    "successorTaskId": "ENG-1004",
+    "lagMinutes": 0,
+    "reason": "HC-007 turnout renewal sequence (Joint Procedure Order)"
+  },
+  {
+    "predecessorTaskId": "ENG-1004",
+    "successorTaskId": "TRD-3004",
+    "lagMinutes": 0,
+    "reason": "HC-007 turnout renewal sequence (Joint Procedure Order)"
+  },
+  {
+    "predecessorTaskId": "TRD-3004",
+    "successorTaskId": "SNT-2004",
+    "lagMinutes": 0,
+    "reason": "HC-007 turnout renewal sequence (Joint Procedure Order)"
+  }
+]

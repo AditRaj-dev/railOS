@@ -1,0 +1,74 @@
+[
+  {
+    "resourceId": "CSM-104",
+    "resourceType": "MACHINE",
+    "machineType": "CSM",
+    "department": "ENGG",
+    "homeDepot": "GZB Machine Depot",
+    "homeSectionId": "SEC_GZB_DER"
+  },
+  {
+    "resourceId": "BCM-71",
+    "resourceType": "MACHINE",
+    "machineType": "BCM",
+    "department": "ENGG",
+    "homeDepot": "TDL Machine Depot",
+    "homeSectionId": "SEC_DER_KRJ"
+  },
+  {
+    "resourceId": "UNIMAT-22",
+    "resourceType": "MACHINE",
+    "machineType": "UNIMAT",
+    "department": "ENGG",
+    "homeDepot": "GZB Machine Depot",
+    "homeSectionId": "SEC_KRJ_SMQ"
+  },
+  {
+    "resourceId": "TW-4501",
+    "resourceType": "MACHINE",
+    "machineType": "TOWER_WAGON",
+    "department": "TRD",
+    "homeDepot": "GZB TRD Depot",
+    "homeSectionId": "SEC_GZB_DER"
+  },
+  {
+    "resourceId": "ENGG-GANG-GZB",
+    "resourceType": "GANG",
+    "machineType": "NONE",
+    "department": "ENGG",
+    "homeDepot": "GZB PWI",
+    "homeSectionId": "SEC_GZB_DER"
+  },
+  {
+    "resourceId": "ENGG-GANG-KRJ",
+    "resourceType": "GANG",
+    "machineType": "NONE",
+    "department": "ENGG",
+    "homeDepot": "KRJ PWI",
+    "homeSectionId": "SEC_KRJ_SMQ"
+  },
+  {
+    "resourceId": "SNT-GANG-KRJ",
+    "resourceType": "GANG",
+    "machineType": "NONE",
+    "department": "SNT",
+    "homeDepot": "KRJ SSE(Sig)",
+    "homeSectionId": "SEC_KRJ_SMQ"
+  },
+  {
+    "resourceId": "SNT-ESCORT-1",
+    "resourceType": "ESCORT",
+    "machineType": "NONE",
+    "department": "SNT",
+    "homeDepot": "KRJ SSE(Sig)",
+    "homeSectionId": "SEC_DER_KRJ"
+  },
+  {
+    "resourceId": "TRD-GANG-DER",
+    "resourceType": "GANG",
+    "machineType": "NONE",
+    "department": "TRD",
+    "homeDepot": "DER TRD",
+    "homeSectionId": "SEC_DER_KRJ"
+  }
+]

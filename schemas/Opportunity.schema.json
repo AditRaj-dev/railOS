@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "BlockType": {
+      "description": "Ground Reality Report section 2.3.",
+      "enum": [
+        "TRAFFIC",
+        "POWER",
+        "INTEGRATED",
+        "SHADOW",
+        "DISCONNECTION",
+        "MEGA",
+        "EMERGENCY"
+      ],
+      "title": "BlockType",
+      "type": "string"
+    },
+    "Track": {
+      "enum": [
+        "UP",
+        "DOWN",
+        "THIRD",
+        "SINGLE"
+      ],
+      "title": "Track",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "opportunityId": {
+      "title": "Opportunityid",
+      "type": "string"
+    },
+    "sectionId": {
+      "title": "Sectionid",
+      "type": "string"
+    },
+    "track": {
+      "$ref": "#/$defs/Track"
+    },
+    "start": {
+      "title": "Start",
+      "type": "integer"
+    },
+    "end": {
+      "title": "End",
+      "type": "integer"
+    },
+    "minutes": {
+      "title": "Minutes",
+      "type": "integer"
+    },
+    "trafficImpact": {
+      "title": "Trafficimpact",
+      "type": "string"
+    },
+    "blockType": {
+      "$ref": "#/$defs/BlockType",
+      "default": "TRAFFIC"
+    },
+    "shadowOf": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Shadowof"
+    },
+    "candidateTaskIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Candidatetaskids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "opportunityId",
+    "sectionId",
+    "track",
+    "start",
+    "end",
+    "minutes",
+    "trafficImpact"
+  ],
+  "title": "Opportunity",
+  "type": "object"
+}

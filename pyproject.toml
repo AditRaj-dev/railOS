@@ -1,0 +1,45 @@
+[project]
+name = "railos"
+version = "0.1.0"
+description = "RailOS planning intelligence: risk, opportunity, bundling, CP-SAT optimization, simulation."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "ortools>=9.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+railos = "railos.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "packages/railos_model/railos_model",
+    "packages/railos_data/railos_data",
+    "packages/risk_engine/risk_engine",
+    "packages/opportunity_engine/opportunity_engine",
+    "packages/bundling_engine/bundling_engine",
+    "packages/optimizer/optimizer",
+    "packages/simulator/simulator",
+    "packages/railos_cli/railos",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    "packages/railos_model",
+    "packages/railos_data",
+    "packages/risk_engine",
+    "packages/opportunity_engine",
+    "packages/bundling_engine",
+    "packages/optimizer",
+    "packages/simulator",
+    "packages/railos_cli",
+]

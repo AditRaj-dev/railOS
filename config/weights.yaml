@@ -1,0 +1,38 @@
+# Priority engine weights. Railway policy, not code. Must sum to 1.0.
+# Source: PRD "Maintenance Priority Engine"; weights are configurable by policy.
+priority:
+  safety_criticality: 0.30
+  defect_severity: 0.20
+  overdue_factor: 0.15
+  asset_criticality: 0.15
+  operational_impact: 0.10
+  failure_risk: 0.10
+
+# Score -> band. Read as: score >= threshold.
+bands:
+  CRITICAL: 80
+  HIGH: 60
+  MEDIUM: 40
+  LOW: 0
+
+# Risk engine. Deterministic heuristic - NOT a trained model.
+risk:
+  # daily growth of consequence, by defect severity code
+  slope_per_day:
+    IMR: 12.0
+    IMRW: 9.0
+    OMS_PEAK_HIGH: 4.0
+    POINT_SLACK_DETECTION: 3.5
+    OHE_DROPPING_FAULT: 5.0
+    OBS: 1.0
+    NONE: 1.5
+  # statutory ceilings on deferral, in minutes
+  max_deferral_minutes:
+    IMR: 4320        # HC-011: 72 h, IRPWM USFD Manual rule 6.3
+    IMRW: 4320
+    OHE_DROPPING_FAULT: 10080
+    OMS_PEAK_HIGH: 20160
+    POINT_SLACK_DETECTION: 20160
+    OBS: 43200
+    NONE: 43200
+  trend_epsilon: 0.5

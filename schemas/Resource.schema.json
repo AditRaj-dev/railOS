@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "Department": {
+      "enum": [
+        "ENGG",
+        "SNT",
+        "TRD"
+      ],
+      "title": "Department",
+      "type": "string"
+    },
+    "MachineType": {
+      "enum": [
+        "BCM",
+        "CSM",
+        "UNIMAT",
+        "TRT",
+        "DGS",
+        "TOWER_WAGON",
+        "NONE"
+      ],
+      "title": "MachineType",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "resourceId": {
+      "title": "Resourceid",
+      "type": "string"
+    },
+    "resourceType": {
+      "title": "Resourcetype",
+      "type": "string"
+    },
+    "machineType": {
+      "$ref": "#/$defs/MachineType",
+      "default": "NONE"
+    },
+    "department": {
+      "$ref": "#/$defs/Department"
+    },
+    "homeDepot": {
+      "title": "Homedepot",
+      "type": "string"
+    },
+    "homeSectionId": {
+      "title": "Homesectionid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "resourceId",
+    "resourceType",
+    "department",
+    "homeDepot",
+    "homeSectionId"
+  ],
+  "title": "Resource",
+  "type": "object"
+}

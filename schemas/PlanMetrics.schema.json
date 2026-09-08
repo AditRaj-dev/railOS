@@ -1,0 +1,56 @@
+{
+  "properties": {
+    "blockUtilisation": {
+      "default": 0.0,
+      "title": "Blockutilisation",
+      "type": "number"
+    },
+    "maintenanceYield": {
+      "default": 0.0,
+      "title": "Maintenanceyield",
+      "type": "number"
+    },
+    "maintenanceDebt": {
+      "default": 0.0,
+      "title": "Maintenancedebt",
+      "type": "number"
+    },
+    "coordinationRatio": {
+      "default": 0.0,
+      "title": "Coordinationratio",
+      "type": "number"
+    },
+    "criticalCompletionRate": {
+      "default": 0.0,
+      "title": "Criticalcompletionrate",
+      "type": "number"
+    },
+    "trainDisruptionMinutes": {
+      "default": 0,
+      "title": "Traindisruptionminutes",
+      "type": "integer"
+    },
+    "freightDetentionMinutes": {
+      "default": 0,
+      "title": "Freightdetentionminutes",
+      "type": "integer"
+    },
+    "tasksScheduled": {
+      "default": 0,
+      "title": "Tasksscheduled",
+      "type": "integer"
+    },
+    "tasksUnassigned": {
+      "default": 0,
+      "title": "Tasksunassigned",
+      "type": "integer"
+    },
+    "srFootprintKmDays": {
+      "default": 0.0,
+      "title": "Srfootprintkmdays",
+      "type": "number"
+    }
+  },
+  "title": "PlanMetrics",
+  "type": "object"
+}
