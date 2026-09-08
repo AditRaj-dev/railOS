@@ -1,19 +1,21 @@
 """RailOS API: human-governed orchestration over canonical RailOS contracts."""
 from __future__ import annotations
 
-import asyncio, copy, hashlib, json, os, threading, uuid
+import asyncio, copy, hashlib, json, math, os, threading, uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from railos_model import (Asset, BlockSection, BlockType, BlockWindow, Corridor,
-    Department, Defect, LineConfig, MaintenanceTask, ObjectiveProfile, Plan,
-    PlanStatus, ScenarioWorld, Severity, TaskStatus, TaskType, Track, TrainClass,
-    TrainMovement)
+from railos_data import geometry_intersects_bbox
+from railos_model import (Asset, BlockType, BlockWindow, Corridor, Department,
+    Defect, Dependency, GoodsForecast, MaintenanceTask, NetworkCatalog,
+    ObjectiveProfile, Plan, PlanStatus, Resource, ScenarioWorld, Severity,
+    TaskStatus, TaskType, Track, TrainMovement)
 
 DEMO_EPOCH = "2026-09-09T00:00:00+05:30"
 DEMO_NOW = "2026-09-08T06:00:00+00:00"
@@ -39,8 +41,8 @@ class Decision(DTO):
 class EmergencyRequest(DTO):
     title: str
     corridor_id: str
-    section_id: str = "SEC-GZB-ALJN"
-    asset_id: str = "ASSET-001"
+    section_id: str = "SEC_KRJ_SMQ"
+    asset_id: str = "TRACK_SEC_KRJ_SMQ_DOWN"
     severity: Severity = Severity.IMR
     duration_minutes: int = Field(default=60, gt=0)
 
@@ -76,35 +78,45 @@ class Repository:
 
     def reset(self):
         with self.lock:
-            for name in ("corridors", "assets", "tasks", "defects", "trains", "windows", "plans", "plan_versions", "runs", "notifications", "idempotency", "emergencies", "assignments", "ingestion_records"):
+            for name in ("corridors", "assets", "tasks", "defects", "trains", "goods", "windows", "resources", "dependencies", "plans", "plan_versions", "runs", "notifications", "idempotency", "emergencies", "assignments", "ingestion_records"):
                 setattr(self, name, {})
+            self.network = NetworkCatalog()
             self.events, self.audit = [], []
             self._seed()
             self.commit()
 
     def _seed(self):
+        from railos_data import load_network, load_world
         from integrations.adapters import ADAPTERS
+
         self.adapters = ADAPTERS
         for name, adapter in ADAPTERS.items():
             self.ingestion_records[name] = adapter.normalize(adapter.fetch("seed")[0])
-        section = BlockSection(sectionId="SEC-GZB-ALJN", fromStation="GZB", toStation="ALJN", startM=0, endM=100000, tracks=[Track.UP, Track.DOWN])
-        self.corridors["GZB-ALJN"] = Corridor(corridorId="GZB-ALJN", name="Ghaziabad–Aligarh", lineConfig=LineConfig.DOUBLE, tracks=[Track.UP, Track.DOWN], sections=[section])
-        for i in range(12):
-            key = f"ASSET-{i+1:03d}"
-            self.assets[key] = Asset(assetId=key, assetType="TRACK", sectionId=section.sectionId, track=Track.UP if i%2 else Track.DOWN, locationM=72000+i*100, criticality=7+i%4)
-        for i in range(267):
-            key = f"TASK-{i+1:03d}"
-            self.tasks[key] = MaintenanceTask(taskId=key, department=[Department.ENGG, Department.SNT, Department.TRD][i%3], assetId=f"ASSET-{i%12+1:03d}", corridorId="GZB-ALJN", sectionId=section.sectionId, track=Track.UP if i%2 else Track.DOWN, kmStart=72+i/1000, kmEnd=72.01+i/1000, taskType=TaskType.TAMPING, severity=10 if i<17 else 4, criticality=9 if i<17 else 5, dueMinute=100+i, estimatedDuration=30+i%4*15, status=TaskStatus.PENDING, overdueDays=5 if i<29 else 0)
-        for i in range(34):
-            key = f"DEFECT-{i+1:03d}"
-            self.defects[key] = Defect(defectId=key, assetId=f"ASSET-{i%12+1:03d}", sectionId=section.sectionId, severityCode=Severity.IMR if i<17 else Severity.OBS, detectedAtMinute=i)
-        for i in range(41):
-            key = f"MOV-{i+1:03d}"
-            self.trains[key] = TrainMovement(trainId=key, sectionId=section.sectionId, track=Track.UP if i%2 else Track.DOWN, entry=i*30, exit=i*30+20, trainClass=TrainClass.RAJDHANI if i==0 else TrainClass.GOODS if i%4==0 else TrainClass.MAIL_EXPRESS, priority=10 if i==0 else 5)
-        for i in range(12):
-            key = f"WIN-{i+1:03d}"
-            self.windows[key] = BlockWindow(windowId=key, sectionId=section.sectionId, track=Track.UP if i%2 else Track.DOWN, start=60+i*120, end=150+i*120)
-        self.emit("DEMO_RESET", "demo", {"tasks":267,"defects":34,"movements":41,"windows":12}, occurred_at=DEMO_NOW, notify=False)
+
+        world = load_world(os.getenv("RAILOS_DATASET_DIR", "datasets"))
+        self.network = load_network(os.getenv("RAILOS_NETWORK_DATA", "datasets/network.json"))
+        for name, values, key in (
+            ("corridors", world.corridors, "corridorId"),
+            ("assets", world.assets, "assetId"),
+            ("tasks", world.tasks, "taskId"),
+            ("defects", world.defects, "defectId"),
+            ("trains", world.trains, "trainId"),
+            ("goods", world.goods, "rakeId"),
+            ("windows", world.windows, "windowId"),
+            ("resources", world.resources, "resourceId"),
+        ):
+            setattr(self, name, {getattr(value, key): value for value in values})
+        self.dependencies = {
+            f"{value.predecessorTaskId}:{value.successorTaskId}": value
+            for value in world.dependencies
+        }
+        self.horizon_minutes = world.horizonMinutes
+        self.horizon_start_iso = world.horizonStartIso
+        self.emit("DEMO_RESET", "demo", {
+            "tasks": len(self.tasks), "defects": len(self.defects),
+            "movements": len(self.trains), "windows": len(self.windows),
+            "networkZones": len(self.network.zones),
+        }, occurred_at=DEMO_NOW, notify=False)
 
     @contextmanager
     def transaction(self):
@@ -127,12 +139,20 @@ class Repository:
         return event
 
     def world(self):
-        return ScenarioWorld(horizonStartIso=DEMO_EPOCH, corridors=list(self.corridors.values()), assets=list(self.assets.values()), tasks=list(self.tasks.values()), defects=list(self.defects.values()), trains=list(self.trains.values()), windows=list(self.windows.values()))
+        return ScenarioWorld(
+            horizonMinutes=getattr(self, "horizon_minutes", 4320),
+            horizonStartIso=getattr(self, "horizon_start_iso", DEMO_EPOCH),
+            corridors=list(self.corridors.values()), assets=list(self.assets.values()),
+            tasks=list(self.tasks.values()), defects=list(self.defects.values()),
+            trains=list(self.trains.values()), goods=list(self.goods.values()),
+            windows=list(self.windows.values()), resources=list(self.resources.values()),
+            dependencies=list(self.dependencies.values()),
+        )
 
     def serializable(self):
         def dump(values): return {k:(v.model_dump(mode="json") if hasattr(v,"model_dump") else v) for k,v in values.items()}
-        result = {name:dump(getattr(self,name)) for name in ("corridors","assets","tasks","defects","trains","windows","plans","plan_versions","runs","notifications","idempotency","emergencies","assignments","ingestion_records")}
-        return result | {"events":self.events,"audit":self.audit}
+        result = {name:dump(getattr(self,name)) for name in ("corridors","assets","tasks","defects","trains","goods","windows","resources","dependencies","plans","plan_versions","runs","notifications","idempotency","emergencies","assignments","ingestion_records")}
+        return result | {"network": self.network.model_dump(mode="json"), "events":self.events,"audit":self.audit}
 
 class PostgresRepository(Repository):
     """Persists each atomic application snapshot to PostgreSQL JSONB."""
@@ -187,6 +207,9 @@ def replanner_functions():
 state = repository_factory()
 app = FastAPI(title="RailOS API",version="1.0.0",description="Synthetic Hackathon Simulation — decision support; human approval required")
 
+# Local synthetic mode only: the control-center dev server is a separate origin.
+app.add_middleware(CORSMiddleware, allow_origins=[o for o in os.getenv("RAILOS_CORS_ORIGINS","http://localhost:3000,http://127.0.0.1:3000").split(",") if o], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
 def auth(user:str|None=Header(None,alias="X-RailOS-User"), role:str|None=Header(None,alias="X-RailOS-Role")):
     if not user: raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
     if role not in VALID_ROLES: raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})
@@ -199,6 +222,59 @@ def allow(*roles):
     return dependency
 
 def error_body(code,message,details=None): return {"error":{"code":code,"message":message,"details":details or {},"requestId":uuid.uuid4().hex}}
+
+NETWORK_LAYER_ORDER = ("sections", "segments", "stations")
+NETWORK_WORLD_BBOX = (-180.0, -90.0, 180.0, 90.0)
+DEFAULT_NETWORK_LIMIT = 5_000
+MAX_NETWORK_LIMIT = 10_000
+
+def _invalid_network_query(code:str,message:str,parameter:str,value:Any,**details:Any):
+    raise HTTPException(422,{"code":code,"message":message,"details":{"parameter":parameter,"value":value,**details}})
+
+def _parse_network_bbox(value:str|None):
+    if value is None: return NETWORK_WORLD_BBOX,None
+    try: parts=[float(part.strip()) for part in value.split(",")]
+    except ValueError:
+        _invalid_network_query("INVALID_BBOX","bbox must contain four finite numbers","bbox",value,expected="minLon,minLat,maxLon,maxLat")
+    if len(parts)!=4 or not all(math.isfinite(part) for part in parts):
+        _invalid_network_query("INVALID_BBOX","bbox must contain four finite numbers","bbox",value,expected="minLon,minLat,maxLon,maxLat")
+    min_lon,min_lat,max_lon,max_lat=parts
+    if not (-180<=min_lon<max_lon<=180 and -90<=min_lat<max_lat<=90):
+        _invalid_network_query("INVALID_BBOX","bbox coordinates are outside valid bounds or not ordered","bbox",value,longitudeRange=[-180,180],latitudeRange=[-90,90])
+    return (min_lon,min_lat,max_lon,max_lat),parts
+
+def _parse_network_zoom(value:str|None):
+    if value is None: return None
+    try: zoom=float(value)
+    except ValueError:
+        _invalid_network_query("INVALID_ZOOM","zoom must be a finite number between 0 and 24","zoom",value,minimum=0,maximum=24)
+    if not math.isfinite(zoom) or not 0<=zoom<=24:
+        _invalid_network_query("INVALID_ZOOM","zoom must be a finite number between 0 and 24","zoom",value,minimum=0,maximum=24)
+    return zoom
+
+def _parse_network_layers(layer:str|None,layers:list[str]|None):
+    requested=[]
+    for raw in ([layer] if layer is not None else [])+(layers or []):
+        requested.extend(value.strip().lower() for value in raw.split(","))
+    if not requested: return ["sections"]
+    invalid=sorted({value for value in requested if value not in {*NETWORK_LAYER_ORDER,"all"}})
+    if invalid:
+        _invalid_network_query("INVALID_LAYER","one or more network layers are not supported","layers",invalid,allowed=[*NETWORK_LAYER_ORDER,"all"])
+    if "all" in requested: return list(NETWORK_LAYER_ORDER)
+    return [value for value in NETWORK_LAYER_ORDER if value in requested]
+
+def _parse_network_limit(value:str|None):
+    if value is None: return DEFAULT_NETWORK_LIMIT
+    try: limit=int(value)
+    except ValueError:
+        _invalid_network_query("INVALID_LIMIT",f"limit must be an integer between 1 and {MAX_NETWORK_LIMIT}","limit",value,minimum=1,maximum=MAX_NETWORK_LIMIT)
+    if not 1<=limit<=MAX_NETWORK_LIMIT:
+        _invalid_network_query("INVALID_LIMIT",f"limit must be an integer between 1 and {MAX_NETWORK_LIMIT}","limit",value,minimum=1,maximum=MAX_NETWORK_LIMIT)
+    return limit
+
+def _network_properties(*,entity_type:str,entity_id:str,layer:str,code:str|None,name:str|None,section_id:str|None,division_id:str|None,zone_id:str|None,planning_enabled:bool,metrics:dict[str,Any],provenance:Any):
+    provenance_data=provenance.model_dump(by_alias=True,mode="json") if hasattr(provenance,"model_dump") else provenance
+    return {"entityType":entity_type,"entityId":entity_id,"layer":layer,"code":code,"name":name,"sectionId":section_id,"divisionId":division_id,"zoneId":zone_id,"planningEnabled":planning_enabled,"metrics":metrics,"synthetic":bool(provenance_data.get("synthetic",True)),"provenance":provenance_data}
 
 @app.exception_handler(HTTPException)
 async def http_error(_,exc):
@@ -215,7 +291,11 @@ def listed(values): return {"items":[v.model_dump(by_alias=True,mode="json") if 
 def health(): return {"status":"ok","synthetic":True,"storageBackend":os.getenv("RAILOS_STORAGE_BACKEND","memory")}
 
 @app.post("/api/v1/demo/reset")
-def reset(_:User=Depends(allow("ADMIN"))): state.reset(); return {"status":"reset","counts":{"tasks":267,"defects":34,"movements":41,"windows":12,"critical":17,"overdue":29},"synthetic":True}
+def reset(_:User=Depends(allow("ADMIN"))):
+    state.reset()
+    counts={"tasks":len(state.tasks),"defects":len(state.defects),"movements":len(state.trains),"windows":len(state.windows),
+        "critical":sum(t.severity>=9 for t in state.tasks.values()),"overdue":sum(t.overdueDays>0 for t in state.tasks.values())}
+    return {"status":"reset","counts":counts,"synthetic":True}
 
 @app.get("/api/v1/corridors")
 def corridors(_:User=Depends(auth)): return listed(state.corridors)
@@ -229,6 +309,22 @@ def assets(_:User=Depends(auth)): return listed(state.assets)
 @app.get("/api/v1/trains/movements")
 @app.get("/api/v1/train-movements")
 def trains(_:User=Depends(auth)): return listed(state.trains)
+@app.get("/api/v1/maintenance/priority")
+def priority(_:User=Depends(auth)):
+    try:
+        from risk_engine import score_all
+        results=score_all(state.world())
+        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":True}
+    except (ImportError,AttributeError,TypeError):
+        raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"risk engine is unavailable"})
+@app.get("/api/v1/maintenance/risk")
+def risk(_:User=Depends(auth)):
+    try:
+        from risk_engine import assess_all
+        results=assess_all(state.world())
+        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":True}
+    except (ImportError,AttributeError,TypeError):
+        raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"risk engine is unavailable"})
 @app.get("/api/v1/maintenance")
 @app.get("/api/v1/maintenance/tasks")
 def tasks(status:TaskStatus|None=None,_:User=Depends(auth)): return listed({k:v for k,v in state.tasks.items() if status is None or v.status==status})
@@ -258,22 +354,152 @@ def plan_detail(plan_id:str,version:int|None=None,_:User=Depends(auth)):
 def generate(request:PlanRequest,idempotency_key:str|None=Header(None,alias="Idempotency-Key"),user:User=Depends(allow("PLANNER","CONTROL_OFFICER"))):
     key = f"{user.user_id}:optimization:{idempotency_key}" if idempotency_key else None
     fingerprint = hashlib.sha256(request.model_dump_json(by_alias=True).encode()).hexdigest()
+    if key and key in state.idempotency:
+        saved=state.idempotency[key];
+        if saved["fingerprint"]!=fingerprint: raise HTTPException(409,{"code":"IDEMPOTENCY_CONFLICT","message":"key reused with a different request"})
+        return saved["response"]
+    for cid in request.corridor_ids:
+        sections=[s for s in state.network.sections if s.corridorId==cid]
+        if not any(s.planningEnabled for s in sections): raise HTTPException(403,{"code":"PLANNING_NOT_ENABLED","message":f"planning is not enabled for corridor {cid}","details":{"corridorId":cid}})
+    port=optimizer_port()
+    if port is None: raise HTTPException(503,{"code":"OPTIMIZER_UNAVAILABLE","message":"architecture-owned optimizer is unavailable"})
+    candidates=[port.generate(state.world(),profile) for profile in (ObjectiveProfile.SAFETY_FIRST,ObjectiveProfile.BALANCED,ObjectiveProfile.OPERATIONS_FIRST)]
+    if candidates and all("INFEASIBLE" in p.solverStatus.upper() for p in candidates):
+        raise HTTPException(422,{"code":"SOLVER_INFEASIBLE","message":"optimizer found no feasible plan","details":{"warnings":[w for p in candidates for w in p.warnings]}})
+    try:
+        from optimizer.audit import audit
+        world=state.world()
+        for plan in candidates:
+            try:
+                violations=audit(world,plan)
+                if violations: plan.warnings.extend([f"{v.code}: {v.detail}" for v in violations])
+            except (KeyError,ValueError): pass
+    except (ImportError,AttributeError,TypeError): pass
+    blocking_violations=[w for p in candidates for w in p.warnings if any(x in w for x in ["HC-","PLAN","RECOMPUTE"])]
+    if candidates and all(p.warnings for p in candidates) and blocking_violations:
+        raise HTTPException(422,{"code":"PLAN_FAILED_AUDIT","message":"all candidate plans failed safety audit","details":{"violations":blocking_violations[:10]}})
     with state.transaction():
-        if key and key in state.idempotency:
-            saved=state.idempotency[key]
-            if saved["fingerprint"]!=fingerprint: raise HTTPException(409,{"code":"IDEMPOTENCY_CONFLICT","message":"key reused with a different request"})
-            return saved["response"]
-        port=optimizer_port()
-        if port is None: raise HTTPException(503,{"code":"OPTIMIZER_UNAVAILABLE","message":"architecture-owned optimizer is unavailable"})
-        candidates=[port.generate(state.world(),profile) for profile in (ObjectiveProfile.SAFETY_FIRST,ObjectiveProfile.BALANCED,ObjectiveProfile.OPERATIONS_FIRST)]
-        if candidates and all("INFEASIBLE" in p.solverStatus.upper() for p in candidates):
-            raise HTTPException(422,{"code":"SOLVER_INFEASIBLE","message":"optimizer found no feasible plan","details":{"warnings":[w for p in candidates for w in p.warnings]}})
         for plan in candidates: state.plans[plan.planId]=copy.deepcopy(plan); state.plan_versions[f"{plan.planId}:v{plan.planVersion}"]=copy.deepcopy(plan)
         run_id=f"RUN-{len(state.runs)+1:06d}"; run={"id":run_id,"status":"COMPLETED","solverStatus":[p.solverStatus for p in candidates],"candidatePlanIds":[p.planId for p in candidates],"createdAt":datetime.now(timezone.utc).isoformat(),"synthetic":True}; state.runs[run_id]=run; state.emit("PLAN_GENERATED",run_id,run,user.user_id)
         response={"optimizationRun":run,"candidatePlans":[p.model_dump(by_alias=True,mode="json") for p in candidates],"warnings":[w for p in candidates for w in p.warnings]}
         if key: state.idempotency[key]={"fingerprint":fingerprint,"response":response}
-        return response
+    return response
 
+@app.get("/api/v1/network/catalog")
+def network_catalog(_:User=Depends(auth)): return state.network.model_dump(by_alias=True,mode="json")|{"synthetic":True}
+@app.get("/api/v1/network/zones")
+def zones(_:User=Depends(auth)): return {"items":[z.model_dump(by_alias=True,mode="json") for z in state.network.zones],"count":len(state.network.zones),"synthetic":True}
+@app.get("/api/v1/network/zones/{zone_id}/divisions")
+def divisions(zone_id:str,_:User=Depends(auth)):
+    divs=[d for d in state.network.divisions if d.zoneId==zone_id]
+    return {"items":[d.model_dump(by_alias=True,mode="json") for d in divs],"count":len(divs),"synthetic":True}
+@app.get("/api/v1/network/divisions/{division_id}/sections")
+def sections_by_div(division_id:str,_:User=Depends(auth)):
+    secs=[s for s in state.network.sections if s.divisionId==division_id]
+    return {"items":[s.model_dump(by_alias=True,mode="json") for s in secs],"count":len(secs),"synthetic":True}
+@app.get("/api/v1/network/sections/{section_id}")
+def section(section_id:str,_:User=Depends(auth)):
+    sec=next((s for s in state.network.sections if s.sectionId==section_id),None)
+    if sec is None: raise HTTPException(404,{"code":"NOT_FOUND","message":"section not found"})
+    data=sec.model_dump(by_alias=True,mode="json")
+    div=next((d for d in state.network.divisions if d.divisionId==sec.divisionId),None)
+    if div:
+        data["division"]={"divisionId":div.divisionId,"zoneId":div.zoneId,"name":div.name,"code":div.code}
+        zone=next((z for z in state.network.zones if z.zoneId==div.zoneId),None)
+        if zone: data["zone"]={"zoneId":zone.zoneId,"name":zone.name,"code":zone.code}
+    return data
+@app.get("/api/v1/network/geojson")
+def network_geojson(
+    bbox:str|None=Query(None,description="minLon,minLat,maxLon,maxLat"),
+    zoom:str|None=Query(None,description="Map zoom level from 0 through 24"),
+    layer:str|None=Query(None,description="Backward-compatible singular layer selector"),
+    layers:list[str]|None=Query(None,description="Comma-separated or repeated layer selectors"),
+    limit:str|None=Query(None,description=f"Maximum features, up to {MAX_NETWORK_LIMIT}"),
+    _:User=Depends(auth),
+):
+    viewport,requested_bbox=_parse_network_bbox(bbox)
+    requested_zoom=_parse_network_zoom(zoom)
+    requested_layers=_parse_network_layers(layer,layers)
+    requested_limit=_parse_network_limit(limit)
+    features=[]
+    sections_by_id={section.sectionId:section for section in state.network.sections}
+
+    if "sections" in requested_layers:
+        for section_value in state.network.sections:
+            if not geometry_intersects_bbox(section_value.geometry,viewport): continue
+            properties=_network_properties(entity_type="SECTION",entity_id=section_value.sectionId,layer="sections",code=section_value.code,name=section_value.name,section_id=section_value.sectionId,division_id=section_value.divisionId,zone_id=section_value.zoneId,planning_enabled=section_value.planningEnabled,metrics=section_value.metrics.model_dump(mode="json"),provenance=section_value.provenance)
+            properties.update({"corridorId":section_value.corridorId,"fromStation":section_value.fromStation,"toStation":section_value.toStation,"tracks":[track.value for track in section_value.tracks]})
+            features.append({"type":"Feature","id":section_value.sectionId,"geometry":section_value.geometry.model_dump(mode="json"),"properties":properties})
+
+    if "segments" in requested_layers:
+        for segment in state.network.segments:
+            if not geometry_intersects_bbox(segment.geometry,viewport): continue
+            parent=sections_by_id.get(segment.sectionId)
+            properties=_network_properties(entity_type="SEGMENT",entity_id=segment.segmentId,layer="segments",code=parent.code if parent else segment.segmentId,name=parent.name if parent else segment.segmentId,section_id=segment.sectionId,division_id=segment.divisionId,zone_id=segment.zoneId,planning_enabled=segment.planningEnabled,metrics={"riskScore":segment.riskScore,"maintenancePressure":segment.maintenancePressure,"trafficPressure":segment.trafficPressure,"activeBlock":segment.activeBlock},provenance=segment.provenance)
+            properties["segmentId"]=segment.segmentId
+            features.append({"type":"Feature","id":segment.segmentId,"geometry":segment.geometry.model_dump(mode="json"),"properties":properties})
+
+    if "stations" in requested_layers:
+        for station in state.network.stations:
+            if not geometry_intersects_bbox(station.geometry,viewport): continue
+            station_sections=[sections_by_id[section_id] for section_id in station.sectionIds if section_id in sections_by_id]
+            division_ids=list(dict.fromkeys(section_value.divisionId for section_value in station_sections))
+            zone_ids=list(dict.fromkeys(section_value.zoneId for section_value in station_sections))
+            properties=_network_properties(entity_type="STATION",entity_id=station.stationId,layer="stations",code=station.code,name=station.name,section_id=None,division_id=division_ids[0] if len(division_ids)==1 else None,zone_id=zone_ids[0] if len(zone_ids)==1 else None,planning_enabled=station.planningEnabled,metrics={},provenance=station.provenance)
+            properties.update({"stationId":station.stationId,"sectionIds":station.sectionIds,"divisionIds":division_ids,"zoneIds":zone_ids})
+            features.append({"type":"Feature","id":station.stationId,"geometry":station.geometry.model_dump(mode="json"),"properties":properties})
+
+    total_count=len(features)
+    features=features[:requested_limit]
+    catalogue_provenance=state.network.provenance.model_dump(by_alias=True,mode="json")
+    return {"type":"FeatureCollection","features":features,"count":len(features),"totalCount":total_count,"truncated":total_count>requested_limit,"synthetic":catalogue_provenance["synthetic"],"provenance":catalogue_provenance,"query":{"bbox":requested_bbox,"zoom":requested_zoom,"layers":requested_layers,"limit":requested_limit}}
+@app.get("/api/v1/network/search")
+def search(q:str=Query(""),_:User=Depends(auth)):
+    q_lower=q.lower()
+    items=[]
+    for z in state.network.zones:
+        if q_lower in z.code.lower() or q_lower in z.name.lower(): items.append({"entityType":"ZONE","entityId":z.zoneId,"code":z.code,"name":z.name,"zoneId":z.zoneId,"planningEnabled":z.planningEnabled})
+    for d in state.network.divisions:
+        if q_lower in d.code.lower() or q_lower in d.name.lower(): items.append({"entityType":"DIVISION","entityId":d.divisionId,"code":d.code,"name":d.name,"zoneId":d.zoneId,"divisionId":d.divisionId,"planningEnabled":d.planningEnabled})
+    for s in state.network.sections:
+        if q_lower in s.code.lower() or q_lower in s.name.lower(): items.append({"entityType":"SECTION","entityId":s.sectionId,"code":s.code,"name":s.name,"zoneId":s.zoneId,"divisionId":s.divisionId,"sectionId":s.sectionId,"planningEnabled":s.planningEnabled})
+    for st in state.network.stations:
+        if q_lower in st.code.lower() or q_lower in st.name.lower(): items.append({"entityType":"STATION","entityId":st.stationId,"code":st.code,"name":st.name,"stationId":st.stationId,"planningEnabled":st.planningEnabled})
+    return {"items":items,"count":len(items),"synthetic":True}
+@app.get("/api/v1/opportunities")
+def opportunities(_:User=Depends(auth)):
+    try:
+        from opportunity_engine import detect
+        results=detect(state.world())
+        return {"items":[o.model_dump(by_alias=True,mode="json") if hasattr(o,"model_dump") else o for o in results],"count":len(results),"synthetic":True}
+    except (ImportError,AttributeError,TypeError):
+        raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"opportunity engine is unavailable"})
+@app.get("/api/v1/bundles")
+def bundles(_:User=Depends(auth)):
+    try:
+        from opportunity_engine import detect
+        from bundling_engine import build
+        from risk_engine import score_all
+        world=state.world()
+        priority={task_id:result.score for task_id,result in score_all(world).items()}
+        results=build(world,detect(world),priority)
+        return {"items":[b.model_dump(by_alias=True,mode="json") if hasattr(b,"model_dump") else b for b in results],"count":len(results),"synthetic":True}
+    except (ImportError,AttributeError,TypeError):
+        raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"bundling engine is unavailable"})
+@app.post("/api/v1/simulator/scenarios/{scenario}")
+def simulate_scenario(scenario:str,body:dict[str,Any]=Body(default_factory=dict),user:User=Depends(allow("PLANNER","CONTROL_OFFICER"))):
+    try:
+        from simulator import SCENARIOS
+    except ImportError:
+        raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"simulator is unavailable"})
+    fn=SCENARIOS.get(scenario)
+    if fn is None:
+        raise HTTPException(404,{"code":"UNKNOWN_SCENARIO","message":f"unknown simulator scenario '{scenario}'"})
+    try:
+        world=fn(state.world(),**body) if body else fn(state.world())
+    except TypeError as exc:
+        raise HTTPException(422,{"code":"VALIDATION_ERROR","message":str(exc)})
+    return {"scenario":scenario,"world":world.model_dump(by_alias=True,mode="json"),"synthetic":True}
 @app.get("/api/v1/optimization/{run_id}")
 @app.get("/api/v1/optimization/status/{run_id}")
 def optimization_status(run_id:str,_:User=Depends(auth)):
@@ -293,7 +519,10 @@ def decide(plan_id,body,target,user):
                     raise HTTPException(409,{"code":"PLAN_VERSION_CONFLICT","message":"an approved plan already covers this territory"})
         state.plan_versions.setdefault(f"{plan_id}:v{source.planVersion}",copy.deepcopy(source)); decided=source.model_copy(deep=True)
         decided.planVersion+=1; decided.parentPlanId=source.planId
-        decided.status=target; state.plan_versions[f"{plan_id}:v{decided.planVersion}"]=copy.deepcopy(decided); state.plans[plan_id]=copy.deepcopy(decided)
+        decided.status=target
+        stamp=f"{target.value} by {user.user_id} at {datetime.now(timezone.utc).isoformat()}" + (f" ({body.reason})" if body.reason else "")
+        decided.provenance=f"{decided.provenance}\n{stamp}" if decided.provenance else stamp
+        state.plan_versions[f"{plan_id}:v{decided.planVersion}"]=copy.deepcopy(decided); state.plans[plan_id]=copy.deepcopy(decided)
         if target==PlanStatus.APPROVED:
             for a in decided.assignments: state.assignments[a.taskId]={"id":a.taskId,"planId":plan_id,"planVersion":decided.planVersion,"taskId":a.taskId,"blockId":a.blockId,"status":"READY","start":a.start,"end":a.end,"synthetic":True}
         state.emit(f"PLAN_{target.value}",plan_id,decided.model_dump(mode="json"),user.user_id,body.reason,source.model_dump(mode="json"),decided.planVersion)
@@ -302,7 +531,7 @@ def decide(plan_id,body,target,user):
 @app.post("/api/v1/block-plans/{plan_id}/approve")
 def approve(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))): return decide(plan_id,body,PlanStatus.APPROVED,user)
 @app.post("/api/v1/block-plans/{plan_id}/reject")
-def reject(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))): return decide(plan_id,body,PlanStatus.SUPERSEDED,user)
+def reject(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))): return decide(plan_id,body,PlanStatus.REJECTED,user)
 @app.post("/api/v1/block-plans/{plan_id}/request-revision")
 def request_revision(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER","PLANNER"))): return decide(plan_id,body,PlanStatus.PROPOSED,user)
 @app.post("/api/v1/block-plans/{plan_id}/lock")

@@ -1,49 +1,25 @@
-# --- Python ---------------------------------------------------------------
+# Python
+.venv/
 __pycache__/
 *.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-.venv/
-venv/
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+*.egg-info/
 
-# --- Node / Next.js (apps/control-center, apps/field-pwa) -----------------
+# JavaScript
 node_modules/
 .next/
-out/
-.turbo/
+coverage/
 *.tsbuildinfo
-.pnpm-store/
-npm-debug.log*
-yarn-error.log*
 
-# --- Environment & secrets ------------------------------------------------
+# Local configuration and secrets
 .env
 .env.*
 !.env.example
-*.pem
-*.key
 
-# --- Editors / OS ---------------------------------------------------------
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# --- Scratch --------------------------------------------------------------
-pytest_out.txt
+# Generated/runtime data
+dist/
+build/
 *.log
-tmp/
+.superpowers/
 
-# NOT ignored, deliberately:
-#   datasets/  frozen input; plan metrics are reproducible against it, and
-#              regenerating it changes every plan
-#   schemas/   the contract other agents generate their types from, so it must be
-#              readable without running Python
-#   config/    weights are railway policy, and policy belongs in version control
+

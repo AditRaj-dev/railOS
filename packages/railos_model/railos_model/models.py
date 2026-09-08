@@ -7,6 +7,8 @@ docs/domain/02-schema-deltas.md so the API/DB agent can mirror them.
 Time is integer minutes from the horizon start. Distance is integer metres.
 """
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 from .enums import (
@@ -49,6 +51,119 @@ class Corridor(BaseModel):
     lineConfig: LineConfig
     tracks: list[Track]
     sections: list[BlockSection]
+
+
+# --- network and map contracts -------------------------------------------
+
+
+class SourceSnapshot(BaseModel):
+    """Immutable source reference for geometry or catalogue data.
+
+    A snapshot describes where data came from; it does not imply that a
+    community or synthetic source is operationally authoritative.
+    """
+
+    snapshotId: str
+    sourceUrl: str | None = None
+    retrievedAt: str | None = None
+    licence: str | None = None
+    checksumSha256: str | None = None
+    immutable: bool = True
+
+
+class DataProvenance(BaseModel):
+    synthetic: bool = True
+    label: str = "Synthetic regional pilot data"
+    source: str = "RailOS curated demo catalogue"
+    generatedAt: str | None = None
+    sourceType: str = "synthetic"
+    sourceSnapshot: SourceSnapshot | None = None
+    isOperationallyAuthoritative: bool = False
+
+
+class NetworkMetrics(BaseModel):
+    pendingMaintenanceCount: int = 0
+    criticalDefectCount: int = 0
+    maintenanceDebt: float = 0.0
+    activeBlocks: int = 0
+    assetAvailability: float = 100.0
+    trafficPressure: float = 0.0
+    openOpportunityCount: int = 0
+
+
+class GeoJSONGeometry(BaseModel):
+    type: Literal["Point", "LineString", "MultiLineString", "Polygon", "MultiPolygon"]
+    coordinates: Any
+
+
+class RailwayZone(BaseModel):
+    zoneId: str
+    code: str
+    name: str
+    centroid: tuple[float, float]
+    metrics: NetworkMetrics = Field(default_factory=NetworkMetrics)
+    planningEnabled: bool = False
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+
+class RailwayDivision(BaseModel):
+    divisionId: str
+    zoneId: str
+    code: str
+    name: str
+    centroid: tuple[float, float]
+    metrics: NetworkMetrics = Field(default_factory=NetworkMetrics)
+    planningEnabled: bool = False
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+
+class RailwaySection(BaseModel):
+    sectionId: str
+    divisionId: str
+    zoneId: str
+    corridorId: str | None = None
+    code: str
+    name: str
+    fromStation: str
+    toStation: str
+    tracks: list[Track]
+    geometry: GeoJSONGeometry
+    metrics: NetworkMetrics = Field(default_factory=NetworkMetrics)
+    planningEnabled: bool = False
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+
+class RailwaySegment(BaseModel):
+    segmentId: str
+    sectionId: str
+    divisionId: str
+    zoneId: str
+    geometry: GeoJSONGeometry
+    riskScore: int = Field(default=0, ge=0, le=100)
+    maintenancePressure: int = Field(default=0, ge=0, le=100)
+    trafficPressure: int = Field(default=0, ge=0, le=200)
+    activeBlock: bool = False
+    planningEnabled: bool = False
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+
+class Station(BaseModel):
+    stationId: str
+    code: str
+    name: str
+    sectionIds: list[str] = Field(default_factory=list)
+    geometry: GeoJSONGeometry
+    planningEnabled: bool = False
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+
+class NetworkCatalog(BaseModel):
+    zones: list[RailwayZone] = Field(default_factory=list)
+    divisions: list[RailwayDivision] = Field(default_factory=list)
+    sections: list[RailwaySection] = Field(default_factory=list)
+    segments: list[RailwaySegment] = Field(default_factory=list)
+    stations: list[Station] = Field(default_factory=list)
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
 
 
 class Asset(BaseModel):

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0",
+  "snapshotId": "osm-fixture-ghaziabad-bounded-20260907T120000Z",
+  "source": {
+    "uri": "fixture://datasets/geospatial/fixtures/overpass-bounded-synthetic.json",
+    "type": "overpass-json"
+  },
+  "retrievedAt": "2026-09-08T09:30:00+05:30",
+  "sourceTimestamp": "2026-09-07T12:00:00Z",
+  "sha256": "0abd4870eb52e65149cfeb6b1e92ead76022d2c2fb155345a0ebfc2174b3d0a7",
+  "licence": {
+    "name": "CC0-1.0 synthetic test fixture",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "attribution": "Synthetic RailOS fixture; not OpenStreetMap or Indian Railways operational data"
+  },
+  "bbox": [77.43, 28.55, 77.58, 28.70],
+  "query": "[out:json][timeout:120];(way[railway=rail](28.55,77.43,28.70,77.58);node[railway~\"^(station|halt)$\"](28.55,77.43,28.70,77.58););out body;>;out skel qt;",
+  "parserVersion": "railos-geospatial-overpass/1.0.0",
+  "synthetic": true,
+  "provenanceLabel": "Synthetic OSM-format fixture · not operational data"
+}

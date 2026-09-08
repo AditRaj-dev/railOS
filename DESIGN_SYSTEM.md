@@ -11,7 +11,7 @@ RailOS design principles:
 
 1. Operational clarity over visual flair
 2. Density without chaos
-3. Dark surfaces for control-room use
+3. Graphite surfaces for control-room use
 4. Strong semantic status system
 5. Consistent hierarchy
 6. Explain state changes clearly
@@ -47,22 +47,22 @@ Use semantic tokens, not random hardcoded colors.
 ### Foundation
 
 Background:
-- bg-canvas
-- bg-surface
-- bg-elevated
-- bg-panel
-- bg-overlay
+- bg-canvas: #121313
+- bg-surface: #181917
+- bg-elevated: #21201d
+- bg-panel: #1c1c1a
+- bg-overlay: #0a0703
 
 Text:
-- text-primary
-- text-secondary
-- text-muted
+- text-primary: #f3efe5
+- text-secondary: #c1bbad
+- text-muted: #918b80
 - text-inverse
 
 Border:
-- border-default
-- border-subtle
-- border-strong
+- border-default: #3a372f
+- border-subtle: #292722
+- border-strong: #554d3f
 
 ### Semantic Status
 
@@ -70,7 +70,7 @@ Neutral:
 - status-neutral
 
 Info:
-- status-info
+- status-info (signal amber: #e8a317)
 
 Success:
 - status-success
@@ -85,17 +85,17 @@ Paused:
 - status-paused
 
 Maintenance Dept Identity:
-- dept-engineering
-- dept-snt
-- dept-traction
+- dept-engineering (oxidized amber)
+- dept-snt (signal amber)
+- dept-traction (muted sage)
 
 Objective Identity:
 - mode-safety
 - mode-balanced
-- mode-operations
+- mode-operations (neutral clay)
 
 Rule:
-status colors must remain readable on dark backgrounds and cannot rely on color alone; pair with labels/icons.
+Status colors must remain readable on graphite backgrounds and cannot rely on color alone; pair with labels/icons. Use signal amber as the sole branded accent; status colors stay desaturated and functional.
 
 ---
 

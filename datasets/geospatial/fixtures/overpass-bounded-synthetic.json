@@ -1,0 +1,81 @@
+{
+  "version": 0.6,
+  "generator": "RailOS offline synthetic fixture",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-07T12:00:00Z",
+    "copyright": "Synthetic fixture; not an OpenStreetMap extract"
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 103,
+      "lat": 28.5800,
+      "lon": 77.5600
+    },
+    {
+      "type": "way",
+      "id": 9002,
+      "nodes": [102, 103],
+      "tags": {
+        "railway": "rail",
+        "usage": "main",
+        "electrified": "contact_line"
+      }
+    },
+    {
+      "type": "node",
+      "id": 101,
+      "lat": 28.6692,
+      "lon": 77.4538,
+      "tags": {
+        "railway": "station",
+        "name": "Fixture Junction",
+        "ref": "FXJ"
+      }
+    },
+    {
+      "type": "node",
+      "id": 105,
+      "lat": 28.6000,
+      "lon": 77.5100,
+      "tags": {
+        "railway": "tram_stop",
+        "name": "Ignored tram stop"
+      }
+    },
+    {
+      "type": "way",
+      "id": 9001,
+      "nodes": [101, 102],
+      "tags": {
+        "railway": "rail",
+        "name": "Fixture Main Line",
+        "gauge": "1676"
+      }
+    },
+    {
+      "type": "node",
+      "id": 102,
+      "lat": 28.6200,
+      "lon": 77.5100,
+      "tags": {
+        "railway": "halt",
+        "name": "Fixture Halt"
+      }
+    },
+    {
+      "type": "way",
+      "id": 9003,
+      "nodes": [104, 105],
+      "tags": {
+        "railway": "light_rail"
+      }
+    },
+    {
+      "type": "node",
+      "id": 104,
+      "lat": 28.6000,
+      "lon": 77.5000
+    }
+  ]
+}
