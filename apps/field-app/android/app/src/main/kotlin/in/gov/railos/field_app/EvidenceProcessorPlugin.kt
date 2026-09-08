@@ -9,6 +9,8 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.exifinterface.media.ExifInterface
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -17,8 +19,10 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import kotlin.math.abs
 
-class EvidenceProcessorPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class EvidenceProcessorPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
+    private val capture = CaptureBridge()
+    private var activityBinding: ActivityPluginBinding? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "in.gov.railos.field_app/evidence_processor")
@@ -27,6 +31,25 @@ class EvidenceProcessorPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityBinding = binding
+        binding.addActivityResultListener(capture)
+        binding.addRequestPermissionsResultListener(capture)
+        capture.attach(binding.activity)
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
+        onAttachedToActivity(binding)
+
+    override fun onDetachedFromActivityForConfigChanges() = onDetachedFromActivity()
+
+    override fun onDetachedFromActivity() {
+        activityBinding?.removeActivityResultListener(capture)
+        activityBinding?.removeRequestPermissionsResultListener(capture)
+        activityBinding = null
+        capture.detach()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -70,6 +93,16 @@ class EvidenceProcessorPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 } catch (e: Exception) {
                     result.error("HASH_FAILED", e.localizedMessage, null)
                 }
+            }
+            "capturePhoto", "captureVideo" -> {
+                val fileName = call.argument<String>("fileName") ?: "capture.jpg"
+                val maxSeconds = call.argument<Int>("maxSeconds") ?: 90
+                val action = if (call.method == "captureVideo") "video" else "photo"
+                capture.capture(action, fileName, maxSeconds, result)
+            }
+            "currentLocation" -> {
+                val timeoutMs = (call.argument<Int>("timeoutMs") ?: 8000).toLong()
+                capture.currentLocation(timeoutMs, result)
             }
             else -> result.notImplemented()
         }

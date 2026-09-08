@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- ponytail: debug-only, so `adb reverse` + http://127.0.0.1:8000 works on a physical device -->
+    <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic"
+        xmlns:tools="http://schemas.android.com/tools"/>
 </manifest>

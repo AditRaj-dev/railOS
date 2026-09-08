@@ -4,6 +4,7 @@ import '../models/evidence_models.dart';
 import '../services/api_client.dart';
 import '../storage/offline_evidence_queue.dart';
 import '../theme/railos_tokens.dart';
+import '../theme/railos_widgets.dart';
 import 'emergency_screen.dart';
 import 'task_detail_screen.dart';
 
@@ -72,26 +73,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .length;
 
     return Scaffold(
-      backgroundColor: RailOSTokens.bg_darkRoot,
+      backgroundColor: RailOSTokens.bg_canvas,
       appBar: AppBar(
-        backgroundColor: RailOSTokens.bg_darkSurface,
+        backgroundColor: RailOSTokens.bg_surface,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               AppStrings.get('app_title'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: RailOSTokens.text_primary,
+                letterSpacing: 0.3,
+              ),
             ),
+            const SizedBox(height: 1),
             Text(
-              session != null ? '${session.name} (${session.employeeId})' : 'Field Supervisor',
-              style: const TextStyle(fontSize: 11, color: Colors.white70),
+              session != null ? '${session.name} • ${session.employeeId}' : 'Field Supervisor',
+              style: const TextStyle(
+                fontSize: 11,
+                fontFamily: 'monospace',
+                color: RailOSTokens.text_muted,
+              ),
             ),
           ],
         ),
         actions: [
           // Language toggle
           IconButton(
-            icon: const Icon(Icons.language, color: Colors.cyan),
+            icon: const Icon(Icons.language, color: RailOSTokens.text_secondary, size: 20),
             tooltip: AppStrings.get('settings_lang'),
             onPressed: () {
               setState(() {
@@ -101,7 +112,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white70),
+            icon: const Icon(Icons.logout, color: RailOSTokens.text_secondary, size: 20),
+            tooltip: 'Logout',
             onPressed: widget.onLogout,
           ),
         ],
@@ -109,28 +121,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Banner: Emergency Report + Offline Queue Sync
+            // Top Operational Banner: Emergency Dispatch + Offline Queue Sync
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: RailOSTokens.spacingMd,
                 vertical: RailOSTokens.spacingSm,
               ),
-              color: RailOSTokens.bg_darkElevated,
+              decoration: const BoxDecoration(
+                color: RailOSTokens.bg_surface,
+                border: Border(
+                  bottom: BorderSide(color: RailOSTokens.border_default, width: 1),
+                ),
+              ),
               child: Row(
                 children: [
-                  // Emergency hazard report button
+                  // Emergency hazard report button with disciplined critical status styling
                   Expanded(
                     child: SizedBox(
                       height: RailOSTokens.minTouchTargetDp,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                        icon: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: RailOSTokens.status_critical_fg,
+                          size: 18,
+                        ),
                         label: Text(
                           AppStrings.get('emergency_btn'),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.3,
+                            color: RailOSTokens.status_critical_text,
+                          ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: RailOSTokens.primary_safetyRed,
-                          foregroundColor: Colors.white,
+                          backgroundColor: RailOSTokens.status_critical_bg,
+                          foregroundColor: RailOSTokens.status_critical_text,
+                          side: const BorderSide(
+                            color: RailOSTokens.status_critical_border,
+                            width: 1,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
                           ),
@@ -146,10 +176,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: RailOSTokens.spacingSm),
 
-                  // Offline queue indicator
-                  if (pendingCount > 0)
+                  // Offline queue sync indicator
+                  if (pendingCount > 0) ...[
+                    const SizedBox(width: RailOSTokens.spacingSm),
                     InkWell(
                       onTap: _syncPending,
                       borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
@@ -163,12 +193,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.sync, color: Colors.amberAccent, size: 18),
+                            const Icon(
+                              Icons.sync,
+                              color: RailOSTokens.status_caution_fg,
+                              size: 16,
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               '$pendingCount Sync',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: RailOSTokens.status_caution_text,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
@@ -177,26 +211,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
 
             // Section Header
             Padding(
-              padding: const EdgeInsets.all(RailOSTokens.spacingMd),
+              padding: const EdgeInsets.symmetric(
+                horizontal: RailOSTokens.spacingMd,
+                vertical: RailOSTokens.spacingSm,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    AppStrings.get('assigned_tasks'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        AppStrings.get('assigned_tasks'),
+                        style: const TextStyle(
+                          color: RailOSTokens.text_primary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: RailOSTokens.bg_elevated,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: RailOSTokens.border_subtle),
+                        ),
+                        child: Text(
+                          '${_tasks.length}',
+                          style: const TextStyle(
+                            color: RailOSTokens.text_secondary,
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   IconButton(
-                    icon: const Icon(Icons.refresh, color: Colors.cyan),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: RailOSTokens.text_secondary,
+                      size: 18,
+                    ),
+                    tooltip: 'Refresh Assignments',
                     onPressed: _loadTasks,
                   ),
                 ],
@@ -206,31 +272,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // Tasks List
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.cyan))
+                  ? const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          color: RailOSTokens.accent,
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    )
                   : _tasks.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No assigned tasks for this shift.',
-                            style: TextStyle(color: Colors.white54),
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.inbox_outlined,
+                                size: 40,
+                                color: RailOSTokens.text_muted,
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'No assigned tasks for this shift.',
+                                style: TextStyle(color: RailOSTokens.text_secondary, fontSize: 13),
+                              ),
+                            ],
                           ),
                         )
                       : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: RailOSTokens.spacingMd),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: RailOSTokens.spacingMd,
+                            vertical: RailOSTokens.spacingXs,
+                          ),
                           itemCount: _tasks.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const SizedBox(height: RailOSTokens.spacingSm),
                           itemBuilder: (ctx, i) {
                             final task = _tasks[i];
                             final steps = (task['steps'] as List? ?? [])
                                 .map((s) => WorkStep.fromJson(s as Map<String, dynamic>))
                                 .toList();
+                            final completedSteps = steps
+                                .where((s) => s.status == WorkExecutionStatus.completed)
+                                .length;
+                            final isFullyVerified = steps.isNotEmpty && completedSteps == steps.length;
 
-                            return Card(
-                              color: RailOSTokens.bg_darkSurface,
-                              shape: RoundedRectangleBorder(
-                                side: const BorderSide(color: RailOSTokens.bg_darkBorder),
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: RailOSTokens.bg_panel,
                                 borderRadius:
                                     BorderRadius.circular(RailOSTokens.borderRadiusMd),
+                                border: Border.all(
+                                  color: isFullyVerified
+                                      ? RailOSTokens.status_ok_border
+                                      : RailOSTokens.border_default,
+                                  width: 1,
+                                ),
                               ),
                               child: InkWell(
                                 borderRadius:
@@ -258,30 +356,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                           Text(
                                             task['taskId'] as String? ?? '',
                                             style: const TextStyle(
-                                              color: Colors.cyanAccent,
+                                              color: RailOSTokens.status_info_fg,
                                               fontFamily: 'monospace',
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 13,
+                                              fontSize: 12,
+                                              letterSpacing: 0.5,
                                             ),
                                           ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blueGrey.shade900,
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: Colors.blueGrey),
-                                            ),
-                                            child: Text(
-                                              task['department'] as String? ?? 'ENGG',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
+                                          RailOSDepartmentBadge(
+                                            department: task['department'] as String? ?? 'ENGG',
                                           ),
                                         ],
                                       ),
@@ -289,26 +372,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       Text(
                                         task['title'] as String? ?? 'Maintenance Task',
                                         style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 15,
+                                          color: RailOSTokens.text_primary,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                       const SizedBox(height: 10),
                                       Row(
                                         children: [
-                                          const Icon(Icons.checklist, size: 16, color: Colors.white54),
-                                          const SizedBox(width: 4),
+                                          Icon(
+                                            isFullyVerified
+                                                ? Icons.check_circle_outline
+                                                : Icons.checklist,
+                                            size: 15,
+                                            color: isFullyVerified
+                                                ? RailOSTokens.status_ok_fg
+                                                : RailOSTokens.text_muted,
+                                          ),
+                                          const SizedBox(width: 5),
                                           Text(
-                                            '${steps.length} Macro Steps (${steps.where((s) => s.status == WorkExecutionStatus.completed).length} Verified)',
-                                            style: const TextStyle(
-                                              color: Colors.white70,
+                                            '${steps.length} Steps ($completedSteps Verified)',
+                                            style: TextStyle(
+                                              color: isFullyVerified
+                                                  ? RailOSTokens.status_ok_text
+                                                  : RailOSTokens.text_secondary,
                                               fontSize: 12,
+                                              fontFamily: 'monospace',
                                             ),
                                           ),
                                           const Spacer(),
-                                          const Icon(Icons.arrow_forward_ios,
-                                              size: 14, color: Colors.white54),
+                                          const Icon(
+                                            Icons.chevron_right,
+                                            size: 16,
+                                            color: RailOSTokens.text_muted,
+                                          ),
                                         ],
                                       ),
                                     ],

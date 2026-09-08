@@ -1,4 +1,4 @@
-/// Shared domain models matching the canonical RailOS evidence specification.
+// Shared domain models matching the canonical RailOS evidence specification.
 
 enum EvidenceKind { photo, video }
 

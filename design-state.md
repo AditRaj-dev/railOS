@@ -39,6 +39,7 @@ _Last updated: 2026-09-08 by implementation-planning_
 | 2026-09-08 | Luna research | Retain MapLibre and deck.gl, add a dedicated MapLibre bridge, viewport-aware delivery, PMTiles/PostGIS/Martin path, and explicit provenance | Fits the existing stack while separating public OSM geometry from authorized railway operational data. |
 | 2026-09-08 | implementation-orchestrator | Split map implementation into frontend, backend API, and ingestion workstreams with disjoint file ownership | Allows parallel work without overwriting the existing dirty worktree. |
 | 2026-09-08 | implementation-planning | Use hosted OpenRailwayMap raster tiles plus seeded reports anchored to RailOS vector segments | Delivers nationwide visible track coverage now while preserving an API-compatible report contract and honest accuracy boundary. |
+| 2026-09-08 | design-system-alignment | Align Flutter field app UI with Next.js control center design tokens and DESIGN.md | Unifies palette (graphite canvas, signal amber accent, muted semantic statuses, department badges) across desk and field, eliminates banned bright/neon cues, enforces min 48dp touch targets and WCAG AA contrast. |
 
 ## Open Questions
 - [x] Primary immediate workflow: show all-India railway tracks and simulated track-aligned reported areas on the Network map.

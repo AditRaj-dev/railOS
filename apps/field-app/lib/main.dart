@@ -3,7 +3,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/api_client.dart';
 import 'storage/offline_evidence_queue.dart';
-import 'theme/railos_tokens.dart';
+import 'theme/railos_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,28 +44,9 @@ class _RailOSFieldAppState extends State<RailOSFieldApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RailOS Field Evidence',
+      title: 'RailOS Field Operations',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: RailOSTokens.bg_darkRoot,
-        primaryColor: RailOSTokens.primary_railBlue,
-        colorScheme: const ColorScheme.dark(
-          primary: RailOSTokens.primary_railBlue,
-          secondary: Colors.cyanAccent,
-          surface: RailOSTokens.bg_darkSurface,
-          error: RailOSTokens.primary_safetyRed,
-        ),
-        fontFamily: 'sans-serif',
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size.fromHeight(RailOSTokens.minTouchTargetDp),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
-            ),
-          ),
-        ),
-      ),
+      theme: RailOSTheme.darkTheme,
       home: _isLoggedIn
           ? DashboardScreen(
               apiClient: _apiClient,

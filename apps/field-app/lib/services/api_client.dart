@@ -7,7 +7,11 @@ class RailOSApiClient {
   final String baseUrl;
   final OfflineEvidenceQueue queue = OfflineEvidenceQueue();
 
-  RailOSApiClient({this.baseUrl = 'http://10.0.2.2:8000'}); // 10.0.2.2 is host loopback in Android emulator
+  // ponytail: 10.0.2.2 = emulator host loopback; physical device uses `adb reverse tcp:8000 tcp:8000`
+  // plus --dart-define=RAILOS_API_BASE=http://127.0.0.1:8000
+  static const _defaultBase = String.fromEnvironment('RAILOS_API_BASE', defaultValue: 'http://10.0.2.2:8000');
+
+  RailOSApiClient({String? baseUrl}) : baseUrl = baseUrl ?? _defaultBase;
 
   String? get _token => queue.currentSession?.accessToken;
 
