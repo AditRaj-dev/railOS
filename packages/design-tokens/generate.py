@@ -63,8 +63,9 @@ def generate():
 
     dart_lines.append("\n  // Geo & Constraints")
     for k, v in data["geo"].items():
+        dart_type = "double" if isinstance(v, float) else "int"
         val_str = f"{float(v)}" if isinstance(v, float) else str(v)
-        dart_lines.append(f"  static const {type(v).__name__} {k} = {val_str};")
+        dart_lines.append(f"  static const {dart_type} {k} = {val_str};")
 
     dart_lines.append("\n  // Media Constraints")
     for k, v in data["media"].items():
