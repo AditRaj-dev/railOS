@@ -15,6 +15,7 @@ import {
   BarChart3,
   RotateCcw,
   ShieldCheck,
+  Film,
   Menu,
   X,
 } from 'lucide-react';
@@ -37,6 +38,7 @@ const NAV_ITEMS: Array<{
   { href: '/possessions', label: 'Possession Board', icon: ShieldCheck, roles: ['ADMIN', 'CONTROL_OFFICER', 'MANAGEMENT', 'TPC', 'STATION_MASTER', 'SIGNAL_TELECOM', 'ENGINEERING', 'TRACTION', 'FIELD_SUPERVISOR'] },
   { href: '/analytics', label: 'Railway Analytics', icon: BarChart3, roles: ['ADMIN', 'MANAGEMENT', 'PLANNER', 'CONTROL_OFFICER'] },
   { href: '/evidence', label: 'Field Evidence', icon: ShieldCheck, roles: ['ADMIN', 'CONTROL_OFFICER', 'MANAGEMENT', 'PLANNER'] },
+  { href: '/evidence-media', label: 'Evidence Media Gallery', icon: Film, roles: ['ADMIN', 'CONTROL_OFFICER', 'MANAGEMENT', 'PLANNER'] },
   { href: '/field', label: 'Field Monitor', icon: Smartphone, roles: ['ADMIN', 'CONTROL_OFFICER', 'MANAGEMENT', 'PLANNER', 'FIELD_SUPERVISOR', 'ENGINEERING', 'SIGNAL_TELECOM', 'TRACTION', 'TPC', 'STATION_MASTER'] },
 ];
 
