@@ -7,6 +7,25 @@ import '../services/api_client.dart';
 import '../services/evidence_processor.dart';
 import '../theme/railos_tokens.dart';
 
+double haversineDistanceMeters({
+  required double latitude1,
+  required double longitude1,
+  required double latitude2,
+  required double longitude2,
+}) {
+  const earthRadius = 6371000.0;
+  final dLat = (latitude1 - latitude2) * (pi / 180.0);
+  final dLon = (longitude1 - longitude2) * (pi / 180.0);
+  final a =
+      sin(dLat / 2) * sin(dLat / 2) +
+      cos(latitude2 * (pi / 180.0)) *
+          cos(latitude1 * (pi / 180.0)) *
+          sin(dLon / 2) *
+          sin(dLon / 2);
+  final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+  return earthRadius * c;
+}
+
 class CaptureScreen extends StatefulWidget {
   final Map<String, dynamic> task;
   final WorkStep step;
@@ -57,22 +76,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   double get _distanceToTarget {
-    const earthRadius = 6371000.0;
-    final dLat = (_currentLat - widget.step.targetLatitude) * (pi / 180.0);
-    final dLon = (_currentLon - widget.step.targetLongitude) * (pi / 180.0);
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(widget.step.targetLatitude * (pi / 180.0)) *
-            cos(_currentLat * (pi / 180.0)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return earthRadius * c;
+    return haversineDistanceMeters(
+      latitude1: _currentLat,
+      longitude1: _currentLon,
+      latitude2: widget.step.targetLatitude,
+      longitude2: widget.step.targetLongitude,
+    );
   }
 
-  bool get _isWithinRadius => _distanceToTarget <= widget.step.targetRadiusMeters;
+  bool get _isWithinRadius =>
+      _distanceToTarget <= widget.step.targetRadiusMeters;
 
   Future<void> _captureMedia() async {
-    if (!_isWithinRadius && (_exceptionReason == null || _exceptionReason!.isEmpty)) {
+    if (!_isWithinRadius &&
+        (_exceptionReason == null || _exceptionReason!.isEmpty)) {
       final reason = await _promptExceptionReason();
       if (reason == null || reason.trim().isEmpty) return;
       _exceptionReason = reason;
@@ -84,7 +101,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
 
     final nowUtc = DateTime.now().toUtc().toIso8601String();
-    final evId = 'ev-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(9999)}';
+    final evId =
+        'ev-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(9999)}';
     _evidenceId = evId;
 
     final isVideo = !widget.step.requiresPhoto;
@@ -149,7 +167,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       startLongitude: _currentLon,
       gpsAccuracyMeters: _accuracyMeters,
       distanceToTargetMeters: _distanceToTarget,
-      geoVerdict: _isWithinRadius ? GeoVerdict.withinRadius : GeoVerdict.outsideRadius,
+      geoVerdict: _isWithinRadius
+          ? GeoVerdict.withinRadius
+          : GeoVerdict.outsideRadius,
       exceptionReason: _exceptionReason,
       locationSamples: [
         GeoSample(
@@ -157,7 +177,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
           latitude: _currentLat,
           longitude: _currentLon,
           accuracyMeters: _accuracyMeters,
-        )
+        ),
       ],
     );
 
@@ -214,7 +234,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
         ),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: RailOSTokens.status_caution_fg, size: 20),
+            Icon(
+              Icons.warning_amber_rounded,
+              color: RailOSTokens.status_caution_fg,
+              size: 20,
+            ),
             SizedBox(width: 8),
             Text(
               'Out-of-Radius Capture',
@@ -232,15 +256,24 @@ class _CaptureScreenState extends State<CaptureScreen> {
           children: [
             Text(
               'Current distance is ${_distanceToTarget.toStringAsFixed(1)}m (allowed radius: ${widget.step.targetRadiusMeters.toInt()}m).',
-              style: const TextStyle(color: RailOSTokens.text_secondary, fontSize: 13),
+              style: const TextStyle(
+                color: RailOSTokens.text_secondary,
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              style: const TextStyle(color: RailOSTokens.text_primary, fontSize: 13),
+              style: const TextStyle(
+                color: RailOSTokens.text_primary,
+                fontSize: 13,
+              ),
               decoration: InputDecoration(
                 hintText: AppStrings.get('exception_reason_prompt'),
-                hintStyle: const TextStyle(color: RailOSTokens.text_muted, fontSize: 12),
+                hintStyle: const TextStyle(
+                  color: RailOSTokens.text_muted,
+                  fontSize: 12,
+                ),
                 filled: true,
                 fillColor: RailOSTokens.bg_panel,
               ),
@@ -251,7 +284,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('Cancel', style: TextStyle(color: RailOSTokens.text_muted)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: RailOSTokens.text_muted),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -275,7 +311,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
       appBar: AppBar(
         backgroundColor: RailOSTokens.bg_surface,
         title: Text(
-          widget.step.requiresPhoto ? 'Live Step Photo' : 'Completion Video (<=90s)',
+          widget.step.requiresPhoto
+              ? 'Live Step Photo'
+              : 'Completion Video (<=90s)',
           style: const TextStyle(
             color: RailOSTokens.text_primary,
             fontSize: 14,
@@ -296,7 +334,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   // Viewfinder area or captured proof preview
                   Container(
                     color: RailOSTokens.bg_canvas,
-                    child: _isCaptured && _capturedProofPath != null && File(_capturedProofPath!).existsSync()
+                    child:
+                        _isCaptured &&
+                            _capturedProofPath != null &&
+                            File(_capturedProofPath!).existsSync()
                         ? Image.file(
                             File(_capturedProofPath!),
                             fit: BoxFit.contain,
@@ -306,9 +347,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  widget.step.requiresPhoto ? Icons.camera_alt_outlined : Icons.videocam_outlined,
+                                  widget.step.requiresPhoto
+                                      ? Icons.camera_alt_outlined
+                                      : Icons.videocam_outlined,
                                   size: 56,
-                                  color: RailOSTokens.text_muted.withValues(alpha: 0.4),
+                                  color: RailOSTokens.text_muted.withValues(
+                                    alpha: 0.4,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
@@ -335,7 +380,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       children: [
                         // Freshness pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: isFreshGps
                                 ? RailOSTokens.status_ok_bg
@@ -374,7 +422,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
                         // Radius match pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: _isWithinRadius
                                 ? RailOSTokens.status_ok_bg
@@ -389,7 +440,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           child: Row(
                             children: [
                               Icon(
-                                _isWithinRadius ? Icons.check : Icons.warning_amber_rounded,
+                                _isWithinRadius
+                                    ? Icons.check
+                                    : Icons.warning_amber_rounded,
                                 size: 13,
                                 color: _isWithinRadius
                                     ? RailOSTokens.status_ok_fg
@@ -426,7 +479,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       decoration: const BoxDecoration(
                         color: RailOSTokens.evidenceStrip_overlayBg,
                         border: Border(
-                          top: BorderSide(color: RailOSTokens.border_default, width: 1),
+                          top: BorderSide(
+                            color: RailOSTokens.border_default,
+                            width: 1,
+                          ),
                         ),
                       ),
                       child: Column(
@@ -547,11 +603,16 @@ class _CaptureScreenState extends State<CaptureScreen> {
                                   },
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: RailOSTokens.text_primary,
-                                    side: const BorderSide(color: RailOSTokens.border_default),
+                                    side: const BorderSide(
+                                      color: RailOSTokens.border_default,
+                                    ),
                                   ),
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
-                                    child: Text(AppStrings.get('retake_btn'), maxLines: 1),
+                                    child: Text(
+                                      AppStrings.get('retake_btn'),
+                                      maxLines: 1,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -561,11 +622,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               child: SizedBox(
                                 height: RailOSTokens.minTouchTargetDp,
                                 child: ElevatedButton(
-                                  onPressed: _isSubmitting ? null : _submitEvidence,
+                                  onPressed: _isSubmitting
+                                      ? null
+                                      : _submitEvidence,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: RailOSTokens.accent,
                                     foregroundColor: RailOSTokens.bg_canvas,
-                                    disabledBackgroundColor: RailOSTokens.bg_elevated,
+                                    disabledBackgroundColor:
+                                        RailOSTokens.bg_elevated,
                                   ),
                                   child: _isSubmitting
                                       ? const SizedBox(
@@ -581,7 +645,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
                                           child: Text(
                                             AppStrings.get('submit_evidence'),
                                             maxLines: 1,
-                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
                                 ),

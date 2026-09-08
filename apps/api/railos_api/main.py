@@ -1,7 +1,7 @@
 """RailOS API: human-governed orchestration over canonical RailOS contracts."""
 from __future__ import annotations
 
-import asyncio, copy, hashlib, json, math, os, threading, uuid
+import asyncio, copy, hashlib, json, math, os, re, threading, uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -12,14 +12,94 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from railos_data import geometry_intersects_bbox
-from railos_model import (Asset, BlockType, BlockWindow, Corridor, Department,
-    Defect, Dependency, GoodsForecast, MaintenanceTask, NetworkCatalog,
-    ObjectiveProfile, Plan, PlanStatus, Resource, ScenarioWorld, Severity,
-    TaskStatus, TaskType, Track, TrainMovement)
+from railos_model import (
+    Asset, AuthoritySignature, BlockBurst, BlockType, BlockWindow,
+    CorrespondenceTest, Corridor, Defect, Dependency, Department,
+    FitnessCertificate, FormT351, GoodsForecast, MaintenanceTask,
+    NetworkCatalog, ObjectiveProfile, PermitToWork, Plan, PlanStatus,
+    Possession, PossessionState, PossessionTransition, ProtectionRecord,
+    Resource, SanctionAuthority, SanctionChain, ScenarioWorld, Severity,
+    SignatureDecision, TaskStatus, TaskType, Track, TrainMovement,
+    WorkExecutionStatus,
+)
+from .roles import OPERATIONAL_ROLES as VALID_ROLES, normalize_role
+from .possession import (
+    AUTHORITY_ROLES,
+    CORRESPONDENCE_TEST,
+    ONLINE_AUTHORITY_ACTIONS,
+    PTW_LEAD_IN,
+    ROLE_AUTHORITIES,
+    SR_DAY_SPEEDS_KMPH,
+    T351_LEAD_IN,
+    TRANSITIONS,
+    TRANSITION_TABLE,
+    build_possession_view,
+    action_already_applied,
+    check_precondition,
+    compute_handback_checklist,
+    compute_overrun_minutes,
+    derive_required_authorities,
+    get_allowed_actions_for_role,
+    parse_datetime,
+)
 
 DEMO_EPOCH = "2026-09-09T00:00:00+05:30"
 DEMO_NOW = "2026-09-08T06:00:00+00:00"
-VALID_ROLES = {"ADMIN", "CONTROL_OFFICER", "PLANNER", "ENGINEERING", "SIGNAL_TELECOM", "TRACTION", "FIELD_SUPERVISOR", "MANAGEMENT"}
+
+NOTIFICATION_ROUTING: dict[str, str] = {
+    "T351_REQUESTED": "STATION_MASTER",
+    "T351_ISSUED": "STATION_MASTER",
+    "T351_ENDORSED": "FIELD_SUPERVISOR",
+    "PTW_REQUESTED": "TPC",
+    "PTW_EARTHED": "TPC",
+    "PTW_ISSUED": "FIELD_SUPERVISOR",
+    "PTW_RODS_REMOVED": "TPC",
+    "PTW_CANCELLED": "FIELD_SUPERVISOR",
+    "POSSESSION_CLEARANCE_REQUESTED": "CONTROL_OFFICER",
+    "POSSESSION_DEFERRED": "FIELD_SUPERVISOR",
+    "POSSESSION_CLEARANCE_GRANTED": "FIELD_SUPERVISOR",
+    "POSSESSION_OVERRUN": "CONTROL_OFFICER",
+    "POSSESSION_HANDBACK_REQUESTED": "TPC",
+    "CORRESPONDENCE_TEST_REQUIRED": "SIGNAL_TELECOM",
+    "FITNESS_CERTIFICATE_REQUIRED": "ENGINEERING",
+    "STATION_CLOSE_REQUIRED": "STATION_MASTER",
+    "POSSESSION_CLOSED": "CONTROL_OFFICER",
+    "BLOCK_BURST_RECORDED": "CONTROL_OFFICER",
+    "PLAN_SANCTION_REQUIRED": "MANAGEMENT",
+    "PLAN_SANCTION_PARTIAL": "CONTROL_OFFICER",
+    "PLAN_SANCTION_REFUSED": "CONTROL_OFFICER",
+    # Possession endpoints emit namespaced events.  Keep the short legacy
+    # names above for connector/event-bus callers, but route both forms so a
+    # T/351/PTW request cannot silently fall through to the supervisor.
+    "POSSESSION_ISSUE_T351": "STATION_MASTER",
+    "POSSESSION_ENDORSE_T351": "FIELD_SUPERVISOR",
+    "POSSESSION_CONFIRM_EARTHING": "TPC",
+    "POSSESSION_ISSUE_PTW": "FIELD_SUPERVISOR",
+    "POSSESSION_REMOVE_DISCHARGE_RODS": "TPC",
+    "POSSESSION_CANCEL_PTW": "FIELD_SUPERVISOR",
+    "POSSESSION_RECONNECT_T351": "FIELD_SUPERVISOR",
+    "POSSESSION_RE_ENERGISE": "FIELD_SUPERVISOR",
+    "POSSESSION_REQUEST_CLEARANCE": "CONTROL_OFFICER",
+    "POSSESSION_DEFER": "FIELD_SUPERVISOR",
+    "POSSESSION_GRANT_CLEARANCE": "FIELD_SUPERVISOR",
+    "POSSESSION_REQUEST_HANDBACK": "TPC",
+    "POSSESSION_START_TESTING": "SIGNAL_TELECOM",
+    "POSSESSION_RECORD_CORRESPONDENCE_TEST": "ENGINEERING",
+    "POSSESSION_CERTIFY_FITNESS": "STATION_MASTER",
+    "POSSESSION_STATION_CLOSE": "CONTROL_OFFICER",
+    "POSSESSION_CLOSE": "CONTROL_OFFICER",
+    "POSSESSION_SANCTIONED": "FIELD_SUPERVISOR",
+    "POSSESSION_START_WORK": "FIELD_SUPERVISOR",
+    "POSSESSION_DECLARE_OVERRUN": "CONTROL_OFFICER",
+}
+
+COLLECTIONS = (
+    "corridors", "assets", "tasks", "defects", "trains", "goods",
+    "windows", "resources", "dependencies", "plans", "plan_versions",
+    "runs", "notifications", "idempotency", "emergencies", "assignments",
+    "ingestion_records", "sanctions", "sanction_versions", "possessions",
+    "block_bursts",
+)
 
 def camel(value: str) -> str:
     head, *tail = value.split("_")
@@ -37,6 +117,27 @@ class PlanRequest(DTO):
 class Decision(DTO):
     reason: str = ""
     expected_version: int | None = None
+    authority: SanctionAuthority | None = None
+    form_reference: str = ""
+
+class SanctionSignRequest(DTO):
+    authority: SanctionAuthority | None = None
+    decision: SignatureDecision = SignatureDecision.GRANTED
+    reason: str = ""
+    form_reference: str = ""
+    expected_version: int | None = None
+
+class PossessionTransitionRequest(DTO):
+    action: str = ""
+    client_event_at_utc: str | None = None
+    note: str = ""
+    form_reference: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+    duration_minutes: int | None = None
+    tsr_speed_kmph: int | None = None
+    detonator_count: int | None = None
+    deferred_until_utc: str | None = None
+    cause_category: str | None = None
 
 class EmergencyRequest(DTO):
     title: str
@@ -54,6 +155,7 @@ class ReplanRequest(DTO):
 
 class WorkUpdate(DTO):
     status: TaskStatus
+    execution_status: WorkExecutionStatus | None = None
     note: str = ""
 
 class DefectCreate(DTO):
@@ -78,7 +180,7 @@ class Repository:
 
     def reset(self):
         with self.lock:
-            for name in ("corridors", "assets", "tasks", "defects", "trains", "goods", "windows", "resources", "dependencies", "plans", "plan_versions", "runs", "notifications", "idempotency", "emergencies", "assignments", "ingestion_records"):
+            for name in COLLECTIONS:
                 setattr(self, name, {})
             self.network = NetworkCatalog()
             self.events, self.audit = [], []
@@ -121,18 +223,57 @@ class Repository:
     @contextmanager
     def transaction(self):
         with self.lock:
-            yield
-            self.commit()
+            # The memory repository is also the reference implementation for
+            # tests and local demos.  Preserve its atomicity promise when a
+            # validation/authority guard raises after mutating a nested model.
+            # Without this snapshot, a failed final signature or transition
+            # could leave a half-written chain visible to the next request.
+            snapshot = {
+                name: copy.deepcopy(getattr(self, name))
+                for name in COLLECTIONS
+            }
+            events = copy.deepcopy(self.events)
+            audit = copy.deepcopy(self.audit)
+            try:
+                yield
+            except Exception as exc:
+                # Partial sanction is a deliberate 202 outcome: its
+                # collected signature must survive the exception handler.
+                if getattr(exc, "commit_transaction", False):
+                    self.commit()
+                    raise
+                for name, value in snapshot.items():
+                    setattr(self, name, value)
+                self.events = events
+                self.audit = audit
+                raise
+            else:
+                self.commit()
 
     def commit(self):
         pass
 
-    def emit(self, event_type, entity_id, payload, actor="system", reason="", before=None, version=None, occurred_at=None, notify=True):
+    def emit(self, event_type, entity_id, payload, actor="system", reason="", before=None, version=None, occurred_at=None, notify=True, *, recipient_role=None):
         event = {"sequence":len(self.events)+1, "id":f"EVT-{len(self.events)+1:06d}", "type":event_type, "actor":actor, "action":event_type, "entityId":entity_id, "before":copy.deepcopy(before), "after":copy.deepcopy(payload), "planVersion":version, "reason":reason, "occurredAt":occurred_at or datetime.now(timezone.utc).isoformat(), "synthetic":True}
         self.events.append(event); self.audit.append(copy.deepcopy(event))
         if notify:
             nid = f"NTF-{event['sequence']:06d}"
-            self.notifications[nid] = {"id":nid,"eventId":event["id"],"category":"CRITICAL" if event_type=="EMERGENCY_CREATED" else "ACTION_REQUIRED","recipientRole":"CONTROL_OFFICER" if event_type.startswith(("PLAN_","EMERGENCY")) else "FIELD_SUPERVISOR","groupingKey":f"{event_type}:{entity_id}","acknowledged":False,"createdAt":event["occurredAt"],"synthetic":True}
+            if recipient_role:
+                recip = normalize_role(recipient_role)
+            elif event_type in NOTIFICATION_ROUTING:
+                recip = NOTIFICATION_ROUTING[event_type]
+            else:
+                recip = "CONTROL_OFFICER" if event_type.startswith(("PLAN_","EMERGENCY")) else "FIELD_SUPERVISOR"
+            self.notifications[nid] = {
+                "id": nid,
+                "eventId": event["id"],
+                "category": "CRITICAL" if event_type in {"EMERGENCY_CREATED", "POSSESSION_OVERRUN"} else "ACTION_REQUIRED",
+                "recipientRole": recip,
+                "groupingKey": f"{event_type}:{entity_id}",
+                "acknowledged": False,
+                "createdAt": event["occurredAt"],
+                "synthetic": True,
+            }
         for queue in list(self.subscribers):
             try: queue.put_nowait(copy.deepcopy(event))
             except asyncio.QueueFull: pass
@@ -151,11 +292,30 @@ class Repository:
 
     def serializable(self):
         def dump(values): return {k:(v.model_dump(mode="json") if hasattr(v,"model_dump") else v) for k,v in values.items()}
-        result = {name:dump(getattr(self,name)) for name in ("corridors","assets","tasks","defects","trains","goods","windows","resources","dependencies","plans","plan_versions","runs","notifications","idempotency","emergencies","assignments","ingestion_records")}
-        return result | {"network": self.network.model_dump(mode="json"), "events":self.events,"audit":self.audit}
+        result = {name:dump(getattr(self,name)) for name in COLLECTIONS}
+        return result | {
+            "network": self.network.model_dump(mode="json"),
+            "horizonMinutes": getattr(self, "horizon_minutes", 4320),
+            "horizonStartIso": getattr(self, "horizon_start_iso", DEMO_EPOCH),
+            "events": self.events,
+            "audit": self.audit,
+        }
 
 class PostgresRepository(Repository):
     """Persists each atomic application snapshot to PostgreSQL JSONB."""
+
+    # Model registration is intentionally explicit.  A restart must restore
+    # the authority-layer collections as typed contracts rather than raw dicts
+    # (the memory backend would never expose that failure).
+    model_types = {
+        "corridors": Corridor, "assets": Asset, "tasks": MaintenanceTask,
+        "defects": Defect, "trains": TrainMovement, "windows": BlockWindow,
+        "goods": GoodsForecast, "resources": Resource, "dependencies": Dependency,
+        "plans": Plan, "plan_versions": Plan,
+        "sanctions": SanctionChain, "sanction_versions": SanctionChain,
+        "possessions": Possession, "block_bursts": BlockBurst,
+    }
+
     def __init__(self):
         url = os.getenv("DATABASE_URL") or os.getenv("RAILOS_DATABASE_URL")
         if not url: raise RuntimeError("DATABASE_URL is required for postgres backend")
@@ -170,10 +330,27 @@ class PostgresRepository(Repository):
         if row:
             self.lock=threading.RLock(); self.subscribers=[]
             payload=row[0] if isinstance(row[0],dict) else json.loads(row[0])
-            model_types={"corridors":Corridor,"assets":Asset,"tasks":MaintenanceTask,"defects":Defect,"trains":TrainMovement,"windows":BlockWindow,"plans":Plan,"plan_versions":Plan}
+            # Initialise every collection before loading so snapshots written
+            # by an older process (before the possession layer existed) still
+            # rehydrate cleanly.
+            for name in COLLECTIONS:
+                setattr(self, name, {})
+            self.events = []
+            self.audit = []
+            self.network = NetworkCatalog()
+            self.horizon_minutes = 4320
+            self.horizon_start_iso = DEMO_EPOCH
             for name,values in payload.items():
                 if name in {"events","audit"}: setattr(self,name,values); continue
-                model=model_types.get(name)
+                if name == "network":
+                    self.network = NetworkCatalog.model_validate(values)
+                    continue
+                if name in {"horizon_minutes", "horizon_start_iso", "horizonMinutes", "horizonStartIso"}:
+                    setattr(self, "horizon_minutes" if name in {"horizon_minutes", "horizonMinutes"} else "horizon_start_iso", values)
+                    continue
+                if name not in COLLECTIONS or not isinstance(values, dict):
+                    continue
+                model=self.model_types.get(name)
                 setattr(self,name,{k:(model.model_validate(v) if model else v) for k,v in values.items()})
             from integrations.adapters import ADAPTERS
             self.adapters=ADAPTERS
@@ -205,7 +382,17 @@ def replanner_functions():
     except (ImportError,AttributeError,TypeError): return None
 
 state = repository_factory()
+
+class PartialSanction(Exception):
+    def __init__(self, chain: SanctionChain):
+        self.chain = chain
+        self.commit_transaction = True
+
 app = FastAPI(title="RailOS API",version="1.0.0",description="Synthetic Hackathon Simulation — decision support; human approval required")
+
+@app.exception_handler(PartialSanction)
+def partial_sanction_handler(request, exc: PartialSanction):
+    return JSONResponse(status_code=202, content=exc.chain.model_dump(by_alias=True, mode="json"))
 
 # Local synthetic mode only: the control-center dev server is a separate origin.
 app.add_middleware(CORSMiddleware, allow_origins=[o for o in os.getenv("RAILOS_CORS_ORIGINS","http://localhost:3000,http://127.0.0.1:3000").split(",") if o], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -216,12 +403,15 @@ app.include_router(evidence_router)
 
 def auth(user:str|None=Header(None,alias="X-RailOS-User"), role:str|None=Header(None,alias="X-RailOS-Role")):
     if not user: raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
-    if role not in VALID_ROLES: raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})
-    return User(userId=user,role=role)
+    normalized = normalize_role(role)
+    if normalized not in VALID_ROLES: raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})
+    return User(userId=user,role=normalized)
 
 def allow(*roles):
+    norm_roles = {normalize_role(r) for r in roles}
     def dependency(user:User=Depends(auth)):
-        if user.role not in roles and user.role!="ADMIN": raise HTTPException(403,{"code":"FORBIDDEN","message":"role is not allowed"})
+        user_role_norm = normalize_role(user.role)
+        if user_role_norm not in norm_roles and user_role_norm!="ADMIN": raise HTTPException(403,{"code":"FORBIDDEN","message":"role is not allowed"})
         return user
     return dependency
 
@@ -510,34 +700,314 @@ def optimization_status(run_id:str,_:User=Depends(auth)):
     if run_id not in state.runs: raise HTTPException(404,{"code":"NOT_FOUND","message":"optimization run not found"})
     return state.runs[run_id]
 
-def decide(plan_id,body,target,user):
+def _backfill_approval_signature(plan: Plan, required: list[SanctionAuthority]) -> AuthoritySignature | None:
+    """Recover the one legacy approver without inventing statutory signatures.
+
+    Before SanctionChain existed, an approved plan carried a provenance stamp
+    such as ``APPROVED by controller-1 (CONTROL_OFFICER) at ...``.  A legacy
+    read may preserve that single approval, but must not claim that TPC,
+    Station Master, or any other authority signed it too.
+    """
+    provenance = plan.provenance or ""
+    match = re.search(
+        r"approved\s+by\s+(?P<user>[^;\n(]+?)(?:\s*\((?P<role>[^)]+)\))?\s+at\s+(?P<at>[^;\n]+)",
+        provenance,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        # A few old solver/library records used ``approved by <actor>;`` with
+        # no timestamp.  Keep the actor if it is unambiguous.
+        match = re.search(r"approved\s+by\s+(?P<user>[^;\n(]+)", provenance, flags=re.IGNORECASE)
+    if not match:
+        return None
+
+    actor = match.group("user").strip()
+    role = normalize_role((match.groupdict().get("role") or "CONTROL_OFFICER").strip())
+    authority = ROLE_AUTHORITIES.get(role)
+    if authority is None or authority not in required:
+        # Legacy single-signature approval was the Section Controller path;
+        # keep it attached to that authority when the plan still requires it.
+        authority = SanctionAuthority.SECTION_CONTROL if SanctionAuthority.SECTION_CONTROL in required else None
+    if authority is None:
+        return None
+    signed_at = match.groupdict().get("at") if match.groupdict().get("at") else datetime.now(timezone.utc).isoformat()
+    return AuthoritySignature(
+        signatureId=f"SIG-BF-{plan.planId}-{authority.value}",
+        authority=authority,
+        decision=SignatureDecision.GRANTED,
+        role=role,
+        userId=actor,
+        reason="Backfilled from existing approved plan provenance",
+        signedAtUtc=signed_at.strip(),
+        planVersion=plan.planVersion,
+    )
+
+
+def ensure_chain(plan: Plan) -> SanctionChain:
+    chain = state.sanctions.get(plan.planId)
+    if chain is None or chain.planVersion != plan.planVersion:
+        reqs, derived_from = derive_required_authorities(plan, state.tasks)
+        signatures: list[AuthoritySignature] = []
+        backfilled = False
+        if plan.status == PlanStatus.APPROVED:
+            legacy = _backfill_approval_signature(plan, reqs)
+            if legacy is not None:
+                signatures.append(legacy)
+            backfilled = True
+
+        granted = {s.authority for s in signatures if s.decision == SignatureDecision.GRANTED}
+        chain = SanctionChain(
+            planId=plan.planId,
+            planVersion=plan.planVersion,
+            requiredAuthorities=reqs,
+            signatures=signatures,
+            # A legacy plan is complete only when its recovered single
+            # authority is the complete requirement.  Multi-authority plans
+            # remain visibly incomplete until an explicit backfill/approval
+            # workflow supplies the missing signatures.
+            complete=set(reqs).issubset(granted),
+            refused=False,
+            derivedFrom=derived_from,
+            backfilled=backfilled,
+        )
+        state.sanctions[plan.planId] = chain
+        state.sanction_versions[f"{plan.planId}:v{plan.planVersion}"] = copy.deepcopy(chain)
+    return chain
+
+def open_possessions_for_plan(
+    plan: Plan,
+    actor: str = "system",
+    actor_role: str = "CONTROL_OFFICER",
+) -> list[str]:
+    created: list[str] = []
+    from datetime import timedelta
+    for b in plan.blocks:
+        possession_id = f"POS-{b.blockId}"
+        if possession_id in state.possessions:
+            continue
+
+        needs_ptw = b.blockType in {BlockType.POWER, BlockType.INTEGRATED}
+        needs_t351 = b.blockType == BlockType.DISCONNECTION
+        needs_corr = False
+        block_tasks = [state.tasks.get(tid) for tid in b.taskIds if tid in state.tasks]
+        for t in block_tasks:
+            if t:
+                if getattr(t, "requiresPTW", False): needs_ptw = True
+                if getattr(t, "requiresT351", False): needs_t351 = True
+                if getattr(t, "requiresCorrespondenceTest", False): needs_corr = True
+
+        lead_in = (PTW_LEAD_IN if needs_ptw else 0) + (T351_LEAD_IN if needs_t351 else 0)
+        epoch_dt = parse_datetime(getattr(state, "horizon_start_iso", DEMO_EPOCH))
+        p_start_dt = epoch_dt + timedelta(minutes=b.start)
+        p_end_dt = epoch_dt + timedelta(minutes=b.end)
+
+        possession = Possession(
+            possessionId=possession_id,
+            planId=plan.planId,
+            planVersion=plan.planVersion,
+            blockId=b.blockId,
+            sectionId=b.sectionId,
+            track=b.track,
+            state=PossessionState.SANCTIONED,
+            plannedStartUtc=p_start_dt.isoformat(),
+            plannedEndUtc=p_end_dt.isoformat(),
+            requiresPTW=needs_ptw,
+            requiresT351=needs_t351,
+            requiresCorrespondenceTest=needs_corr,
+            assignedTaskIds=list(b.taskIds),
+            department=(b.departments[0].value if b.departments else "ENGG"),
+            leadInMinutes=lead_in,
+            createdAtUtc=datetime.now(timezone.utc).isoformat(),
+            updatedAtUtc=datetime.now(timezone.utc).isoformat(),
+            transitions=[
+                PossessionTransition(
+                    transitionId=f"TRN-{uuid.uuid4().hex[:8]}",
+                    fromState=PossessionState.SANCTIONED,
+                    toState=PossessionState.SANCTIONED,
+                    action="sanction",
+                    actor=actor,
+                    role=normalize_role(actor_role),
+                    occurredAtUtc=datetime.now(timezone.utc).isoformat(),
+                    ruleCitation="G&SR 4.09",
+                )
+            ]
+        )
+        state.possessions[possession_id] = possession
+        created.append(possession_id)
+        state.emit("POSSESSION_SANCTIONED", possession_id, possession.model_dump(mode="json"), actor)
+    return created
+
+def decide(plan_id, body, target, user):
     with state.transaction():
-        source=state.plans.get(plan_id)
-        if source is None: raise HTTPException(404,{"code":"NOT_FOUND","message":"plan not found"})
-        if body.expected_version is not None and body.expected_version!=source.planVersion: raise HTTPException(409,{"code":"STALE_PLAN_VERSION","message":"plan version is stale"})
-        if source.status==PlanStatus.APPROVED: raise HTTPException(409,{"code":"PLAN_ALREADY_APPROVED","message":"approved plan is immutable"})
-        if target==PlanStatus.APPROVED:
-            sections={b.sectionId for b in source.blocks}
-            for other_id,other in state.plans.items():
-                if other_id!=plan_id and other.status==PlanStatus.APPROVED and sections.intersection({b.sectionId for b in other.blocks}):
-                    raise HTTPException(409,{"code":"PLAN_VERSION_CONFLICT","message":"an approved plan already covers this territory"})
-        state.plan_versions.setdefault(f"{plan_id}:v{source.planVersion}",copy.deepcopy(source)); decided=source.model_copy(deep=True)
-        decided.planVersion+=1; decided.parentPlanId=source.planId
-        decided.status=target
-        stamp=f"{target.value} by {user.user_id} at {datetime.now(timezone.utc).isoformat()}" + (f" ({body.reason})" if body.reason else "")
-        decided.provenance=f"{decided.provenance}\n{stamp}" if decided.provenance else stamp
-        state.plan_versions[f"{plan_id}:v{decided.planVersion}"]=copy.deepcopy(decided); state.plans[plan_id]=copy.deepcopy(decided)
-        if target==PlanStatus.APPROVED:
-            for a in decided.assignments: state.assignments[a.taskId]={"id":a.taskId,"planId":plan_id,"planVersion":decided.planVersion,"taskId":a.taskId,"blockId":a.blockId,"status":"READY","start":a.start,"end":a.end,"synthetic":True}
-        state.emit(f"PLAN_{target.value}",plan_id,decided.model_dump(mode="json"),user.user_id,body.reason,source.model_dump(mode="json"),decided.planVersion)
+        source = state.plans.get(plan_id)
+        if source is None:
+            raise HTTPException(404, {"code": "NOT_FOUND", "message": "plan not found"})
+        if body.expected_version is not None and body.expected_version != source.planVersion:
+            raise HTTPException(409, {"code": "STALE_PLAN_VERSION", "message": "plan version is stale"})
+        if source.status == PlanStatus.APPROVED:
+            raise HTTPException(409, {"code": "PLAN_ALREADY_APPROVED", "message": "approved plan is immutable"})
+
+        if target == PlanStatus.PROPOSED:
+            state.sanctions.pop(plan_id, None)
+            state.plan_versions.setdefault(f"{plan_id}:v{source.planVersion}", copy.deepcopy(source))
+            decided = source.model_copy(deep=True)
+            decided.planVersion += 1
+            decided.parentPlanId = source.planId
+            decided.status = target
+            stamp = f"{target.value} by {user.user_id} at {datetime.now(timezone.utc).isoformat()}" + (f" ({body.reason})" if body.reason else "")
+            decided.provenance = f"{decided.provenance}\n{stamp}" if decided.provenance else stamp
+            state.plan_versions[f"{plan_id}:v{decided.planVersion}"] = copy.deepcopy(decided)
+            state.plans[plan_id] = copy.deepcopy(decided)
+            state.emit(f"PLAN_{target.value}", plan_id, decided.model_dump(mode="json"), user.user_id, body.reason, source.model_dump(mode="json"), decided.planVersion)
+            return decided
+
+        if target == PlanStatus.REJECTED:
+            chain = ensure_chain(source)
+            norm_role = normalize_role(user.role)
+            auth_to_sign = getattr(body, "authority", None) or ROLE_AUTHORITIES.get(norm_role, SanctionAuthority.SECTION_CONTROL)
+            if norm_role != "ADMIN" and (
+                auth_to_sign not in chain.requiredAuthorities
+                or norm_role not in AUTHORITY_ROLES.get(auth_to_sign, frozenset())
+            ):
+                raise HTTPException(
+                    403,
+                    {
+                        "code": "FORBIDDEN",
+                        "message": f"Role '{user.role}' cannot refuse authority '{getattr(auth_to_sign, 'value', auth_to_sign)}' for this plan",
+                    },
+                )
+            refusal_sig = AuthoritySignature(
+                signatureId=f"SIG-{uuid.uuid4().hex[:8]}",
+                authority=auth_to_sign,
+                decision=SignatureDecision.REFUSED,
+                role=norm_role,
+                userId=user.user_id,
+                reason=body.reason,
+                formReference=getattr(body, "form_reference", ""),
+                signedAtUtc=datetime.now(timezone.utc).isoformat(),
+                planVersion=source.planVersion,
+            )
+            chain.signatures.append(refusal_sig)
+            chain.refused = True
+            state.sanctions[plan_id] = chain
+            state.sanction_versions[f"{plan_id}:v{source.planVersion}"] = copy.deepcopy(chain)
+            state.emit("PLAN_SANCTION_REFUSED", plan_id, chain.model_dump(mode="json"), user.user_id, body.reason, version=source.planVersion)
+
+            state.plan_versions.setdefault(f"{plan_id}:v{source.planVersion}", copy.deepcopy(source))
+            decided = source.model_copy(deep=True)
+            decided.planVersion += 1
+            decided.parentPlanId = source.planId
+            decided.status = target
+            stamp = f"{target.value} by {user.user_id} at {datetime.now(timezone.utc).isoformat()}" + (f" ({body.reason})" if body.reason else "")
+            decided.provenance = f"{decided.provenance}\n{stamp}" if decided.provenance else stamp
+            state.plan_versions[f"{plan_id}:v{decided.planVersion}"] = copy.deepcopy(decided)
+            state.plans[plan_id] = copy.deepcopy(decided)
+            state.emit(f"PLAN_{target.value}", plan_id, decided.model_dump(mode="json"), user.user_id, body.reason, source.model_dump(mode="json"), decided.planVersion)
+            return decided
+
+        # Target is APPROVED
+        chain = ensure_chain(source)
+        norm_role = normalize_role(user.role)
+
+        auth_to_sign = getattr(body, "authority", None)
+        if auth_to_sign is None:
+            if norm_role == "ADMIN":
+                already_signed = {s.authority for s in chain.signatures if s.decision == SignatureDecision.GRANTED and s.planVersion == source.planVersion}
+                pending = [a for a in chain.requiredAuthorities if a not in already_signed]
+                auth_to_sign = pending[0] if pending else chain.requiredAuthorities[0]
+            else:
+                auth_to_sign = ROLE_AUTHORITIES.get(norm_role)
+
+        if auth_to_sign is None or (auth_to_sign not in chain.requiredAuthorities and norm_role != "ADMIN"):
+            raise HTTPException(403, {"code": "FORBIDDEN", "message": f"Role '{user.role}' cannot sign required authorities for this plan ({[a.value for a in chain.requiredAuthorities]})"})
+        if norm_role != "ADMIN" and norm_role not in AUTHORITY_ROLES.get(auth_to_sign, frozenset()):
+            raise HTTPException(
+                403,
+                {
+                    "code": "FORBIDDEN",
+                    "message": f"Role '{user.role}' cannot sign authority '{auth_to_sign.value}'",
+                },
+            )
+
+        already = any(s.authority == auth_to_sign and s.decision == SignatureDecision.GRANTED and s.planVersion == source.planVersion for s in chain.signatures)
+        if not already:
+            sig = AuthoritySignature(
+                signatureId=f"SIG-{uuid.uuid4().hex[:8]}",
+                authority=auth_to_sign,
+                decision=SignatureDecision.GRANTED,
+                role=norm_role,
+                userId=user.user_id,
+                reason=body.reason,
+                formReference=getattr(body, "form_reference", ""),
+                signedAtUtc=datetime.now(timezone.utc).isoformat(),
+                planVersion=source.planVersion,
+            )
+            chain.signatures.append(sig)
+
+        granted_set = {s.authority for s in chain.signatures if s.decision == SignatureDecision.GRANTED and s.planVersion == source.planVersion}
+        chain.complete = set(chain.requiredAuthorities).issubset(granted_set)
+
+        state.sanctions[plan_id] = chain
+        state.sanction_versions[f"{plan_id}:v{source.planVersion}"] = copy.deepcopy(chain)
+
+        if not chain.complete:
+            state.emit("PLAN_SANCTION_PARTIAL", plan_id, chain.model_dump(mode="json"), user.user_id, body.reason, version=source.planVersion)
+            raise PartialSanction(chain)
+
+        # Finalisation
+        sections = {b.sectionId for b in source.blocks}
+        for other_id, other in state.plans.items():
+            if other_id != plan_id and other.status == PlanStatus.APPROVED and sections.intersection({b.sectionId for b in other.blocks}):
+                raise HTTPException(409, {"code": "PLAN_VERSION_CONFLICT", "message": "an approved plan already covers this territory"})
+
+        state.plan_versions.setdefault(f"{plan_id}:v{source.planVersion}", copy.deepcopy(source))
+        decided = source.model_copy(deep=True)
+        decided.planVersion += 1
+        decided.parentPlanId = source.planId
+        decided.status = PlanStatus.APPROVED
+        stamp = f"APPROVED by {user.user_id} ({norm_role}) at {datetime.now(timezone.utc).isoformat()}" + (f" ({body.reason})" if body.reason else "")
+        decided.provenance = f"{decided.provenance}\n{stamp}" if decided.provenance else stamp
+        state.plan_versions[f"{plan_id}:v{decided.planVersion}"] = copy.deepcopy(decided)
+        state.plans[plan_id] = copy.deepcopy(decided)
+
+        for a in decided.assignments:
+            state.assignments[a.taskId] = {
+                "id": a.taskId, "planId": plan_id, "planVersion": decided.planVersion,
+                "taskId": a.taskId, "blockId": a.blockId, "status": "READY",
+                "start": a.start, "end": a.end, "synthetic": True,
+            }
+
+        # Keep the collected signatures attached to the immutable approved
+        # version.  The signatures were collected against source vN; the
+        # resulting sanctioned plan is vN+1, so a versioned copy is recorded
+        # for reads while the source-version chain remains in history.
+        final_chain = copy.deepcopy(chain)
+        final_chain.planVersion = decided.planVersion
+        final_chain.signatures = [
+            signature.model_copy(update={"planVersion": decided.planVersion})
+            for signature in final_chain.signatures
+        ]
+        final_chain.complete = True
+        final_chain.backfilled = False
+        state.sanctions[plan_id] = final_chain
+        state.sanction_versions[f"{plan_id}:v{decided.planVersion}"] = copy.deepcopy(final_chain)
+
+        open_possessions_for_plan(decided, user.user_id, norm_role)
+        state.emit("PLAN_APPROVED", plan_id, decided.model_dump(mode="json"), user.user_id, body.reason, source.model_dump(mode="json"), decided.planVersion)
         return decided
 
 @app.post("/api/v1/block-plans/{plan_id}/approve")
-def approve(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))): return decide(plan_id,body,PlanStatus.APPROVED,user)
+def approve(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))):
+    return decide(plan_id,body,PlanStatus.APPROVED,user)
+
 @app.post("/api/v1/block-plans/{plan_id}/reject")
-def reject(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))): return decide(plan_id,body,PlanStatus.REJECTED,user)
+def reject(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER"))):
+    return decide(plan_id,body,PlanStatus.REJECTED,user)
+
 @app.post("/api/v1/block-plans/{plan_id}/request-revision")
-def request_revision(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER","PLANNER"))): return decide(plan_id,body,PlanStatus.PROPOSED,user)
+def request_revision(plan_id:str,body:Decision=Decision(),user:User=Depends(allow("CONTROL_OFFICER","PLANNER"))):
+    return decide(plan_id,body,PlanStatus.PROPOSED,user)
+
 @app.post("/api/v1/block-plans/{plan_id}/lock")
 def lock(plan_id:str,user:User=Depends(allow("CONTROL_OFFICER"))):
     with state.transaction():
@@ -547,21 +1017,142 @@ def lock(plan_id:str,user:User=Depends(allow("CONTROL_OFFICER"))):
             if a.taskId in state.tasks: state.tasks[a.taskId]=state.tasks[a.taskId].model_copy(update={"locked":True})
         ids=[a.taskId for a in plan.assignments]; state.emit("PLAN_LOCKED",plan_id,{"taskIds":ids},user.user_id,version=plan.planVersion); return {"planId":plan_id,"lockedTaskIds":ids}
 
+@app.get("/api/v1/block-plans/{plan_id}/sanctions")
+def get_plan_sanctions(plan_id: str, _: User = Depends(auth)):
+    # ensure_chain() may backfill a legacy approval on first read.  Keep that
+    # write inside the repository transaction so a Postgres-backed process
+    # cannot return the chain and then lose it on restart.
+    with state.transaction():
+        plan = state.plans.get(plan_id)
+        if plan is None:
+            raise HTTPException(404, {"code": "NOT_FOUND", "message": "plan not found"})
+        chain = ensure_chain(plan)
+        return chain.model_dump(by_alias=True, mode="json")
+
+@app.post("/api/v1/block-plans/{plan_id}/sanctions")
+def sign_plan_sanction(
+    plan_id: str,
+    body: SanctionSignRequest = SanctionSignRequest(),
+    user: User = Depends(auth),
+):
+    # GRANTED is the normal multi-party path and REFUSED follows the normal
+    # rejected-plan path.  DEFERRED/WITHDRAWN are non-terminal chain events:
+    # they remain visible in the audit trail but must not mutate PlanStatus.
+    if body.decision in {SignatureDecision.DEFERRED, SignatureDecision.WITHDRAWN}:
+        with state.transaction():
+            plan = state.plans.get(plan_id)
+            if plan is None:
+                raise HTTPException(404, {"code": "NOT_FOUND", "message": "plan not found"})
+            if body.expected_version is not None and body.expected_version != plan.planVersion:
+                raise HTTPException(409, {"code": "STALE_PLAN_VERSION", "message": "plan version is stale"})
+            if plan.status == PlanStatus.APPROVED:
+                raise HTTPException(409, {"code": "PLAN_ALREADY_APPROVED", "message": "approved plan is immutable"})
+            chain = ensure_chain(plan)
+            role = normalize_role(user.role)
+            authority = body.authority or ROLE_AUTHORITIES.get(role)
+            if authority is None or authority not in chain.requiredAuthorities:
+                raise HTTPException(403, {"code": "FORBIDDEN", "message": "role cannot update a required sanction authority"})
+            if role != "ADMIN" and role not in AUTHORITY_ROLES.get(authority, frozenset()):
+                raise HTTPException(403, {"code": "FORBIDDEN", "message": f"Role '{user.role}' cannot update authority '{authority.value}'"})
+            if body.decision == SignatureDecision.WITHDRAWN:
+                chain.signatures = [
+                    signature for signature in chain.signatures
+                    if not (
+                        signature.authority == authority
+                        and signature.decision == SignatureDecision.GRANTED
+                        and signature.planVersion == plan.planVersion
+                    )
+                ]
+            chain.signatures.append(
+                AuthoritySignature(
+                    signatureId=f"SIG-{uuid.uuid4().hex[:8]}",
+                    authority=authority,
+                    decision=body.decision,
+                    role=role,
+                    userId=user.user_id,
+                    reason=body.reason,
+                    formReference=body.form_reference,
+                    signedAtUtc=datetime.now(timezone.utc).isoformat(),
+                    planVersion=plan.planVersion,
+                )
+            )
+            granted = {s.authority for s in chain.signatures if s.decision == SignatureDecision.GRANTED and s.planVersion == plan.planVersion}
+            chain.complete = set(chain.requiredAuthorities).issubset(granted)
+            chain.refused = False
+            state.sanctions[plan_id] = chain
+            state.sanction_versions[f"{plan_id}:v{plan.planVersion}"] = copy.deepcopy(chain)
+            state.emit(f"PLAN_SANCTION_{body.decision.value}", plan_id, chain.model_dump(mode="json"), user.user_id, body.reason, version=plan.planVersion)
+            view = chain.model_dump(by_alias=True, mode="json")
+            view["replayed"] = False
+            return JSONResponse(status_code=202, content=view)
+
+    target = PlanStatus.APPROVED if body.decision == SignatureDecision.GRANTED else PlanStatus.REJECTED
+    dec = Decision(
+        reason=body.reason,
+        expectedVersion=body.expected_version,
+        authority=body.authority,
+        formReference=body.form_reference,
+    )
+    return decide(plan_id, dec, target, user)
+
 @app.get("/api/v1/work/assignments")
 def work_assignments(_:User=Depends(auth)): return listed(state.assignments)
+
 @app.post("/api/v1/work/assignments/{assignment_id}/updates")
 @app.post("/api/v1/work/{assignment_id}/update")
 def work_update(assignment_id:str,body:WorkUpdate,user:User=Depends(allow("FIELD_SUPERVISOR","ENGINEERING","SIGNAL_TELECOM","TRACTION","CONTROL_OFFICER"))):
     with state.transaction():
         assignment=state.assignments.get(assignment_id)
         if assignment is None: raise HTTPException(404,{"code":"NOT_FOUND","message":"assignment not found"})
-        before=copy.deepcopy(assignment); assignment["status"]=body.status.value; assignment["note"]=body.note
-        if assignment["taskId"] in state.tasks: state.tasks[assignment["taskId"]]=state.tasks[assignment["taskId"]].model_copy(update={"status":body.status,"locked":body.status in {TaskStatus.STARTED,TaskStatus.COMPLETED}})
-        state.emit(f"TASK_{body.status.value}",assignment["taskId"],assignment,user.user_id,body.note,before); return assignment
+
+        def assignment_value(name: str, default: Any = None):
+            if isinstance(assignment, dict):
+                return assignment.get(name, default)
+            return getattr(assignment, name, default)
+
+        # New guard: TaskStatus.STARTED when a possession exists for the block and is not LIVE/OVERRUNNING
+        if body.status == TaskStatus.STARTED:
+            block_id = assignment_value("blockId")
+            matching_poss = None
+            explicit_possession_id = assignment_value("possessionId")
+            if explicit_possession_id:
+                matching_poss = state.possessions.get(explicit_possession_id)
+            if block_id:
+                matching_poss = matching_poss or state.possessions.get(f"POS-{block_id}")
+                if matching_poss is None:
+                    for p in state.possessions.values():
+                        if p.blockId == block_id:
+                            matching_poss = p
+                            break
+            if matching_poss and matching_poss.state not in {PossessionState.LIVE, PossessionState.OVERRUNNING}:
+                raise HTTPException(409, {
+                    "code": "POSSESSION_NOT_LIVE",
+                    "message": f"Cannot start task '{assignment_value('taskId', assignment_id)}': possession '{matching_poss.possessionId}' is in state '{matching_poss.state}', not LIVE or OVERRUNNING"
+                })
+
+        before=copy.deepcopy(assignment)
+        task_id = assignment_value("taskId", assignment_id)
+        if isinstance(assignment, dict):
+            assignment["status"] = body.status.value
+            assignment["note"] = body.note
+            if body.execution_status:
+                assignment["executionStatus"] = body.execution_status.value
+            response = assignment
+        else:
+            updates: dict[str, Any] = {"status": body.status, "note": body.note}
+            if body.execution_status:
+                updates["executionStatus"] = body.execution_status
+            assignment = assignment.model_copy(update=updates)
+            state.assignments[assignment_id] = assignment
+            response = assignment
+        if task_id in state.tasks:
+            state.tasks[task_id]=state.tasks[task_id].model_copy(update={"status":body.status,"locked":body.status in {TaskStatus.STARTED,TaskStatus.COMPLETED}})
+        state.emit(f"TASK_{body.status.value}",task_id,response,user.user_id,body.note,before); return response
 
 @app.post("/api/v1/emergencies")
 def create_emergency(body:EmergencyRequest,user:User=Depends(allow("CONTROL_OFFICER","ENGINEERING","SIGNAL_TELECOM","TRACTION","FIELD_SUPERVISOR"))):
-    eid="EMG-"+hashlib.sha1(body.model_dump_json(by_alias=True).encode()).hexdigest()[:8].upper(); task=MaintenanceTask(taskId=eid,department=Department.ENGG,assetId=body.asset_id,corridorId=body.corridor_id,sectionId=body.section_id,track=Track.DOWN,kmStart=72.4,kmEnd=72.41,taskType=TaskType.RAIL_REPLACEMENT,severity=10,criticality=10,dueMinute=body.duration_minutes,estimatedDuration=body.duration_minutes,status=TaskStatus.PENDING,blockType=BlockType.EMERGENCY,isEmergency=True,detectedAtMinute=0)
+    eid="EMG-"+hashlib.sha1(body.model_dump_json(by_alias=True).encode()).hexdigest()[:8].upper()
+    task=MaintenanceTask(taskId=eid,department=Department.ENGG,assetId=body.asset_id,corridorId=body.corridor_id,sectionId=body.section_id,track=Track.DOWN,kmStart=72.4,kmEnd=72.41,taskType=TaskType.RAIL_REPLACEMENT,severity=10,criticality=10,dueMinute=body.duration_minutes,estimatedDuration=body.duration_minutes,status=TaskStatus.PENDING,blockType=BlockType.EMERGENCY,isEmergency=True,detectedAtMinute=0)
     with state.transaction(): state.emergencies[eid]={"id":eid,"request":body.model_dump(mode="json"),"task":task.model_dump(mode="json"),"synthetic":True}; state.emit("EMERGENCY_CREATED",eid,state.emergencies[eid],user.user_id)
     return {"id":eid,"replanRequired":True,"synthetic":True}
 
@@ -577,8 +1168,479 @@ def replan_generate(body:ReplanRequest,user:User=Depends(allow("CONTROL_OFFICER"
     with state.transaction(): state.plans[new.planId]=copy.deepcopy(new); state.plan_versions[f"{new.planId}:v{new.planVersion}"]=copy.deepcopy(new); state.emit("PLAN_REOPTIMIZED",new.planId,payload,user.user_id,body.reason,parent.model_dump(mode="json"),new.planVersion)
     return {"plan":new.model_dump(by_alias=True,mode="json"),"diff":payload,"parentPreserved":True}
 
+# --- Possession Endpoints & Lifecycle -----------------------------------------
+
+def handle_possession_action(
+    possession_id: str,
+    action: str,
+    body: PossessionTransitionRequest,
+    user: User,
+    idempotency_key: str | None = None,
+    offline_replay: str | None = None,
+):
+    norm_role = normalize_role(user.role)
+    is_replay = bool(offline_replay and offline_replay.lower() in {"true", "1", "yes"})
+
+    key = f"possession:{possession_id}:{action}:{idempotency_key}" if idempotency_key else None
+    fingerprint = hashlib.sha256(
+        body.model_dump_json(by_alias=True, exclude_none=True).encode("utf-8")
+    ).hexdigest()
+    if key and key in state.idempotency:
+        saved = state.idempotency[key]
+        if saved.get("fingerprint") and saved["fingerprint"] != fingerprint:
+            raise HTTPException(
+                409,
+                {
+                    "code": "IDEMPOTENCY_CONFLICT",
+                    "message": "Idempotency-Key was already used with a different transition body",
+                },
+            )
+        replay_response = copy.deepcopy(saved["response"])
+        if isinstance(replay_response, dict):
+            replay_response["replayed"] = True
+        return replay_response
+
+    possession = state.possessions.get(possession_id)
+    if possession is None:
+        raise HTTPException(404, {"code": "NOT_FOUND", "message": f"Possession '{possession_id}' not found"})
+
+    if is_replay and action in ONLINE_AUTHORITY_ACTIONS:
+        raise HTTPException(409, {
+            "code": "ONLINE_AUTHORITY_REQUIRED",
+            "message": f"Action '{action}' requires real-time online authority and cannot be replayed from offline queue",
+        })
+
+    # A client timestamp is part of the transition's optimistic concurrency
+    # contract, not merely a hint for offline requests.  Reject it whenever it
+    # predates the latest server transition, regardless of whether the caller
+    # remembered to include the replay marker.
+    if body.client_event_at_utc:
+        try:
+            client_dt = datetime.fromisoformat(body.client_event_at_utc)
+            if client_dt.tzinfo is None:
+                client_dt = client_dt.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                422,
+                {
+                    "code": "VALIDATION_ERROR",
+                    "message": "clientEventAtUtc must be an ISO-8601 timestamp",
+                },
+            )
+        if possession.transitions:
+            last_transition = max(
+                possession.transitions,
+                key=lambda transition: parse_datetime(transition.occurredAtUtc),
+            )
+            last_dt = parse_datetime(last_transition.occurredAtUtc)
+            if client_dt < last_dt:
+                raise HTTPException(409, {
+                    "code": "STALE_TRANSITION",
+                    "message": f"Event timestamp {body.client_event_at_utc} predates last transition at {last_transition.occurredAtUtc}",
+                })
+
+    # Find transition definition
+    rule = TRANSITION_TABLE.get((possession.state, action))
+
+    if rule is None:
+        # Check natural target-state idempotency.  The original action may
+        # have been a state-changing transition whose target is now current.
+        matching = [t for t in TRANSITIONS if t.action == action and t.to_state == possession.state]
+        if matching:
+            if norm_role != "ADMIN" and not any(norm_role in t.allowed_roles for t in matching):
+                raise HTTPException(403, {"code": "FORBIDDEN", "message": f"Role '{user.role}' is not authorized to replay action '{action}'"})
+            view = build_possession_view(possession, user.role, state)
+            view["replayed"] = True
+            return view
+
+        allowed = get_allowed_actions_for_role(possession, user.role, state)
+        raise HTTPException(409, {
+            "code": "ILLEGAL_TRANSITION",
+            "message": f"Cannot perform action '{action}' on possession in state '{possession.state}'",
+            "details": {"currentState": possession.state, "action": action, "allowedActions": allowed},
+        })
+
+    if norm_role != "ADMIN" and norm_role not in rule.allowed_roles:
+        raise HTTPException(403, {"code": "FORBIDDEN", "message": f"Role '{user.role}' is not authorized to perform action '{action}'"})
+
+    # Same-state physical acts use their persisted artefact as a second
+    # idempotency layer, even when the client did not send an Idempotency-Key.
+    if rule.to_state == possession.state and action_already_applied(possession, action):
+        view = build_possession_view(possession, user.role, state)
+        view["replayed"] = True
+        return view
+
+    body_dict = body.model_dump(by_alias=True, mode="json", exclude_none=True)
+    if body.details:
+        body_dict.update(body.details)
+    if body.duration_minutes is not None:
+        body_dict["durationMinutes"] = body.duration_minutes
+    if body.tsr_speed_kmph is not None:
+        body_dict["tsrSpeedKmph"] = body.tsr_speed_kmph
+    if body.detonator_count is not None:
+        body_dict["detonatorCount"] = body.detonator_count
+    if body.deferred_until_utc is not None:
+        body_dict["deferredUntilUtc"] = body.deferred_until_utc
+
+    ok, msg = check_precondition(possession, action, body_dict, norm_role, state)
+    if not ok:
+        code = "TEST_TOO_SHORT" if "TEST_TOO_SHORT" in msg else "PRECONDITION_FAILED"
+        raise HTTPException(422 if code == "TEST_TOO_SHORT" else 409, {"code": code, "message": msg})
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    from_st = possession.state
+    to_st = rule.to_state
+
+    with state.transaction():
+        if action == "defer":
+            possession.deferralCount += 1
+            possession.deferredUntilUtc = body_dict.get("deferredUntilUtc")
+        elif action == "issue-t351":
+            t_num = body.form_reference or f"T351-{uuid.uuid4().hex[:6].upper()}"
+            possession.formT351 = FormT351(
+                formNumber=t_num,
+                sectionId=possession.sectionId,
+                track=possession.track,
+                issuedBy=user.user_id,
+                issuedAtUtc=now_iso,
+                remarks=body.note,
+            )
+        elif action == "endorse-t351":
+            if possession.formT351:
+                possession.formT351.status = "ENDORSED"
+                possession.formT351.endorsedBy = user.user_id
+                possession.formT351.endorsedAtUtc = now_iso
+        elif action == "confirm-earthing":
+            if not possession.permitToWork:
+                possession.permitToWork = PermitToWork(
+                    ptwNumber=body.form_reference or f"PTW-{uuid.uuid4().hex[:6].upper()}",
+                    oheSection=possession.sectionId,
+                    isolatorNumber=body_dict.get("isolatorNumber", "ISO-01"),
+                    issuedBy="",
+                    issuedAtUtc=now_iso,
+                    earthingConfirmed=True,
+                    status="PENDING",
+                    remarks=body.note,
+                )
+            else:
+                possession.permitToWork.earthingConfirmed = True
+        elif action == "issue-ptw":
+            ptw_num = body.form_reference or (possession.permitToWork.ptwNumber if possession.permitToWork else f"PTW-{uuid.uuid4().hex[:6].upper()}")
+            iso_num = possession.permitToWork.isolatorNumber if possession.permitToWork else "ISO-01"
+            possession.permitToWork = PermitToWork(
+                ptwNumber=ptw_num,
+                oheSection=possession.sectionId,
+                isolatorNumber=iso_num,
+                issuedBy=user.user_id,
+                issuedAtUtc=now_iso,
+                earthingConfirmed=True,
+                status="ISSUED",
+                remarks=body.note,
+            )
+        elif action == "plant-protection":
+            det_count = int(body_dict.get("detonatorCount", 3))
+            possession.protectionRecord = ProtectionRecord(
+                bannerFlagsPlaced=True,
+                detonatorCount=det_count,
+                handSignalPosted=True,
+                plantedBy=user.user_id,
+                plantedAtUtc=now_iso,
+                remarks=body.note,
+            )
+        elif action == "start-work":
+            if not possession.actualStartUtc:
+                possession.actualStartUtc = now_iso
+        elif action == "record-correspondence-test":
+            dur = int(body_dict.get("durationMinutes", 30))
+            possession.correspondenceTest = CorrespondenceTest(
+                testId=f"TEST-{uuid.uuid4().hex[:6].upper()}",
+                testedBy=user.user_id,
+                startAtUtc=body_dict.get("startAtUtc", now_iso),
+                completedAtUtc=now_iso,
+                durationMinutes=dur,
+                pointsTested=True,
+                signalsTested=True,
+                trackCircuitsTested=True,
+                passed=True,
+                remarks=body.note,
+            )
+        elif action == "remove-discharge-rods":
+            if possession.permitToWork:
+                possession.permitToWork.dischargeRodsRemoved = True
+        elif action == "cancel-ptw":
+            if possession.permitToWork:
+                possession.permitToWork.status = "CANCELLED"
+                possession.permitToWork.cancelledBy = user.user_id
+                possession.permitToWork.cancelledAtUtc = now_iso
+        elif action == "reconnect-t351":
+            if possession.formT351:
+                possession.formT351.status = "RECONNECTED"
+                possession.formT351.reconnectedBy = user.user_id
+                possession.formT351.reconnectedAtUtc = now_iso
+        elif action == "re-energise":
+            if possession.permitToWork:
+                possession.permitToWork.reEnergised = True
+                possession.permitToWork.reEnergisedBy = user.user_id
+                possession.permitToWork.reEnergisedAtUtc = now_iso
+        elif action == "certify-fitness":
+            tsr = body_dict.get("tsrSpeedKmph", 20)
+            possession.fitnessCertificate = FitnessCertificate(
+                certificateNumber=f"FIT-{uuid.uuid4().hex[:6].upper()}",
+                certifiedBy=user.user_id,
+                certifiedAtUtc=now_iso,
+                tsrSpeedKmph=tsr,
+                trackFitForTraffic=True,
+                overheadClearanceFit=True,
+                signallingFit=True,
+                remarks=body.note,
+            )
+        elif action == "station-close":
+            possession.stationClosed = True
+            possession.stationClosedBy = user.user_id
+            possession.stationClosedAtUtc = now_iso
+        elif action == "close":
+            possession.actualEndUtc = now_iso
+            actual_end_dt = parse_datetime(now_iso)
+            planned_end_dt = parse_datetime(possession.plannedEndUtc)
+            overrun_min = int((actual_end_dt - planned_end_dt).total_seconds() / 60)
+            if overrun_min > 0:
+                burst_id = f"BST-{possession.possessionId}"
+                if burst_id not in state.block_bursts:
+                    burst = BlockBurst(
+                        burstId=burst_id,
+                        possessionId=possession.possessionId,
+                        planId=possession.planId,
+                        sectionId=possession.sectionId,
+                        track=possession.track,
+                        department=possession.department or "ENGG",
+                        plannedEndUtc=possession.plannedEndUtc,
+                        actualCloseUtc=now_iso,
+                        overrunMinutes=overrun_min,
+                        causeCategory=body_dict.get("causeCategory") or "EXECUTION",
+                        remarks=body.note,
+                        occurredAtUtc=now_iso,
+                    )
+                    state.block_bursts[burst_id] = burst
+                    state.emit("BLOCK_BURST_RECORDED", burst_id, burst.model_dump(mode="json"), user.user_id, recipient_role="CONTROL_OFFICER")
+
+        possession.state = to_st
+        possession.updatedAtUtc = now_iso
+        transition_record = PossessionTransition(
+            transitionId=f"TRN-{uuid.uuid4().hex[:8]}",
+            fromState=from_st,
+            toState=to_st,
+            action=action,
+            actor=user.user_id,
+            role=norm_role,
+            occurredAtUtc=now_iso,
+            clientEventAtUtc=body.client_event_at_utc,
+            ruleCitation=rule.rule_citation,
+            details={"note": body.note, **body_dict},
+            replayed=is_replay,
+        )
+        possession.transitions.append(transition_record)
+        state.emit(
+            f"POSSESSION_{action.upper().replace('-', '_')}",
+            possession.possessionId,
+            possession.model_dump(mode="json"),
+            user.user_id,
+            body.note,
+        )
+
+        view = build_possession_view(possession, user.role, state)
+        if key:
+            state.idempotency[key] = {"response": copy.deepcopy(view), "fingerprint": fingerprint}
+        return view
+
+@app.get("/api/v1/possessions")
+def list_possessions(
+    status: PossessionState | None = None,
+    sectionId: str | None = None,
+    user: User = Depends(auth),
+):
+    now = datetime.now(timezone.utc)
+    with state.transaction():
+        for p in list(state.possessions.values()):
+            if p.state == PossessionState.LIVE:
+                planned_end = parse_datetime(p.plannedEndUtc)
+                if now > planned_end:
+                    p.state = PossessionState.OVERRUNNING
+                    p.updatedAtUtc = now.isoformat()
+                    p.transitions.append(PossessionTransition(
+                        transitionId=f"TRN-{uuid.uuid4().hex[:8]}",
+                        fromState=PossessionState.LIVE,
+                        toState=PossessionState.OVERRUNNING,
+                        action="declare-overrun",
+                        actor="system-sweeper",
+                        role="CONTROL_OFFICER",
+                        occurredAtUtc=now.isoformat(),
+                        ruleCitation="SO-005",
+                        details={"reason": "Automatic sweep: planned block window elapsed"}
+                    ))
+                    state.emit("POSSESSION_OVERRUN", p.possessionId, p.model_dump(mode="json"), "system-sweeper", "Planned block window elapsed")
+
+    views = []
+    for p in state.possessions.values():
+        if status and p.state != status:
+            continue
+        if sectionId and p.sectionId != sectionId:
+            continue
+        views.append(build_possession_view(p, user.role, state))
+    return {"items": views, "count": len(views), "synthetic": True}
+
+@app.get("/api/v1/possessions/mine")
+def my_possessions(user: User = Depends(auth)):
+    norm_role = normalize_role(user.role)
+    views = []
+    for p in state.possessions.values():
+        view = build_possession_view(p, user.role, state)
+        if norm_role in {"ADMIN", "CONTROL_OFFICER"} or len(view["allowedActions"]) > 0:
+            views.append(view)
+        elif norm_role == "STATION_MASTER" and p.requiresT351:
+            views.append(view)
+        elif norm_role == "TPC" and p.requiresPTW:
+            views.append(view)
+        elif norm_role in {"ENGINEERING", "SIGNAL_TELECOM", "TRACTION", "FIELD_SUPERVISOR"}:
+            views.append(view)
+    return {"items": views, "count": len(views), "synthetic": True}
+
+@app.get("/api/v1/possessions/{possession_id}")
+def get_possession(possession_id: str, user: User = Depends(auth)):
+    possession = state.possessions.get(possession_id)
+    if possession is None:
+        raise HTTPException(404, {"code": "NOT_FOUND", "message": f"Possession '{possession_id}' not found"})
+    return build_possession_view(possession, user.role, state)
+
+@app.post("/api/v1/possessions/{possession_id}/transitions/{action}")
+def post_possession_transition(
+    possession_id: str,
+    action: str,
+    body: PossessionTransitionRequest = PossessionTransitionRequest(),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+    offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"),
+    user: User = Depends(auth),
+):
+    return handle_possession_action(possession_id, action, body, user, idempotency_key, offline_replay)
+
+# Convenience routes for all actions
+@app.post("/api/v1/possessions/{possession_id}/request-clearance")
+def possession_request_clearance(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "request-clearance", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/grant-clearance")
+def possession_grant_clearance(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "grant-clearance", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/defer")
+def possession_defer(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "defer", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/start-isolation")
+def possession_start_isolation(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "start-isolation", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/issue-t351")
+def possession_issue_t351(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "issue-t351", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/endorse-t351")
+def possession_endorse_t351(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "endorse-t351", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/confirm-earthing")
+def possession_confirm_earthing(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "confirm-earthing", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/issue-ptw")
+def possession_issue_ptw(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "issue-ptw", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/plant-protection")
+def possession_plant_protection(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "plant-protection", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/start-work")
+def possession_start_work(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "start-work", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/declare-overrun")
+def possession_declare_overrun(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "declare-overrun", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/start-testing")
+def possession_start_testing(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "start-testing", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/record-correspondence-test")
+def possession_record_correspondence_test(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "record-correspondence-test", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/request-handback")
+def possession_request_handback(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "request-handback", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/remove-discharge-rods")
+def possession_remove_discharge_rods(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "remove-discharge-rods", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/cancel-ptw")
+def possession_cancel_ptw(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "cancel-ptw", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/reconnect-t351")
+def possession_reconnect_t351(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "reconnect-t351", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/re-energise")
+def possession_re_energise(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "re-energise", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/certify-fitness")
+def possession_certify_fitness(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "certify-fitness", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/station-close")
+def possession_station_close(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "station-close", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/close")
+def possession_close(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "close", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/cancel")
+def possession_cancel(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "cancel", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/{possession_id}/abandon")
+def possession_abandon(possession_id: str, body: PossessionTransitionRequest = PossessionTransitionRequest(), idempotency_key: str | None = Header(None, alias="Idempotency-Key"), offline_replay: str | None = Header(None, alias="X-RailOS-Offline-Replay"), user: User = Depends(auth)):
+    return handle_possession_action(possession_id, "abandon", body, user, idempotency_key, offline_replay)
+
+@app.post("/api/v1/possessions/backfill")
+def backfill_possessions(user: User = Depends(allow("CONTROL_OFFICER"))):
+    created = []
+    with state.transaction():
+        for p in state.plans.values():
+            if p.status == PlanStatus.APPROVED:
+                ensure_chain(p)
+                for b in p.blocks:
+                    pid = f"POS-{b.blockId}"
+                    if pid not in state.possessions:
+                        created.extend(open_possessions_for_plan(p, user.user_id, normalize_role(user.role)))
+    return {"createdPossessionIds": created, "count": len(created), "synthetic": True}
+
+@app.get("/api/v1/block-bursts")
+def list_block_bursts(_: User = Depends(auth)):
+    bursts = list(state.block_bursts.values())
+    return {"items": [b.model_dump(by_alias=True, mode="json") if hasattr(b, "model_dump") else b for b in bursts], "count": len(bursts), "synthetic": True}
+
 @app.get("/api/v1/notifications")
-def notifications(_:User=Depends(auth)): return listed(state.notifications)
+def notifications(recipientRole: str | None = None, _: User = Depends(auth)):
+    items = list(state.notifications.values())
+    if recipientRole:
+        norm = normalize_role(recipientRole)
+        items = [i for i in items if normalize_role(i.get("recipientRole")) == norm]
+    return {"items": items, "count": len(items), "synthetic": True}
+
 @app.post("/api/v1/notifications/{notification_id}/acknowledge")
 @app.post("/api/v1/notifications/{notification_id}/ack")
 def acknowledge(notification_id:str,user:User=Depends(auth)):
@@ -586,20 +1648,55 @@ def acknowledge(notification_id:str,user:User=Depends(auth)):
         note=state.notifications.get(notification_id)
         if note is None: raise HTTPException(404,{"code":"NOT_FOUND","message":"notification not found"})
         before=copy.deepcopy(note); note["acknowledged"]=True; note["acknowledgedBy"]=user.user_id; state.emit("NOTIFICATION_ACKNOWLEDGED",notification_id,note,user.user_id,before=before,notify=False); return note
+
 @app.get("/api/v1/analytics")
 @app.get("/api/v1/analytics/summary")
-def analytics(_:User=Depends(auth)): return {"label":"Synthetic Hackathon Simulation","tasks":len(state.tasks),"defects":len(state.defects),"criticalTasks":sum(t.severity>=9 for t in state.tasks.values()),"overdueTasks":sum(t.overdueDays>0 for t in state.tasks.values()),"completedTasks":sum(t.status==TaskStatus.COMPLETED for t in state.tasks.values()),"maintenanceDebt":sum(t.overdueDays*t.criticality for t in state.tasks.values()),"synthetic":True}
+def analytics(_:User=Depends(auth)):
+    bursts = list(state.block_bursts.values())
+    total_burst_min = sum(b.overrunMinutes for b in bursts)
+    burst_by_dept: dict[str, int] = {}
+    burst_by_cause: dict[str, int] = {}
+    for b in bursts:
+        burst_by_dept[b.department] = burst_by_dept.get(b.department, 0) + b.overrunMinutes
+        burst_by_cause[b.causeCategory] = burst_by_cause.get(b.causeCategory, 0) + b.overrunMinutes
+
+    return {
+        "label": "Synthetic Hackathon Simulation",
+        "tasks": len(state.tasks),
+        "defects": len(state.defects),
+        "criticalTasks": sum(t.severity>=9 for t in state.tasks.values()),
+        "overdueTasks": sum(t.overdueDays>0 for t in state.tasks.values()),
+        "completedTasks": sum(t.status==TaskStatus.COMPLETED for t in state.tasks.values()),
+        "maintenanceDebt": sum(t.overdueDays*t.criticality for t in state.tasks.values()),
+        "blockBursts": {
+            "totalBursts": len(bursts),
+            "totalOverrunMinutes": total_burst_min,
+            "byDepartment": burst_by_dept,
+            "byCause": burst_by_cause,
+            "items": [b.model_dump(by_alias=True, mode="json") if hasattr(b, "model_dump") else b for b in bursts],
+        },
+        "synthetic": True,
+    }
+
 @app.get("/api/v1/integrations/status")
 def integration_status(_:User=Depends(auth)): return {"synthetic":True,"scenario":"GZB_ALJN_DEMO","sources":{n:a.health() for n,a in state.adapters.items()},"ingestion":state.ingestion_records}
+
 @app.get("/api/v1/events")
 def events(after:int=0,_:User=Depends(auth)): return {"events":[e for e in state.events if e["sequence"]>after],"nextSequence":len(state.events)}
+
 @app.post("/api/v1/events/replay")
 def replay(after:int=0,user:User=Depends(auth)): return events(after,user)
 
 async def websocket_events(socket:WebSocket):
-    user,role=socket.headers.get("x-railos-user"),socket.headers.get("x-railos-role")
+    # Browsers cannot attach arbitrary headers during a native WebSocket
+    # handshake.  Keep the existing header contract for native/mobile clients,
+    # while allowing the desk browser to authenticate with the same normalized
+    # values in the query string (wss://.../events/ws?userId=...&role=...).
+    user = socket.headers.get("x-railos-user") or socket.query_params.get("userId") or socket.query_params.get("user")
+    role = socket.headers.get("x-railos-role") or socket.query_params.get("role")
     if not user: await socket.close(code=4401); return
-    if role not in VALID_ROLES: await socket.close(code=4403); return
+    norm_role = normalize_role(role)
+    if norm_role not in VALID_ROLES: await socket.close(code=4403); return
     await socket.accept(); queue=asyncio.Queue(maxsize=100); state.subscribers.append(queue)
     try:
         await socket.send_json({"events":state.events,"nextSequence":len(state.events)})
@@ -607,7 +1704,9 @@ async def websocket_events(socket:WebSocket):
     except WebSocketDisconnect: pass
     finally:
         if queue in state.subscribers: state.subscribers.remove(queue)
+
 @app.websocket("/api/v1/events/ws")
 async def events_ws(socket:WebSocket): await websocket_events(socket)
+
 @app.websocket("/api/v1/ws")
 async def legacy_ws(socket:WebSocket): await websocket_events(socket)

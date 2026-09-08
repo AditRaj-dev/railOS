@@ -53,24 +53,24 @@ class GeoSample {
   });
 
   Map<String, dynamic> toJson() => {
-        'timestampUtc': timestampUtc,
-        'latitude': latitude,
-        'longitude': longitude,
-        'altitudeMeters': altitudeMeters,
-        'accuracyMeters': accuracyMeters,
-        'speedMps': speedMps,
-        'isMocked': isMocked,
-      };
+    'timestampUtc': timestampUtc,
+    'latitude': latitude,
+    'longitude': longitude,
+    'altitudeMeters': altitudeMeters,
+    'accuracyMeters': accuracyMeters,
+    'speedMps': speedMps,
+    'isMocked': isMocked,
+  };
 
   factory GeoSample.fromJson(Map<String, dynamic> json) => GeoSample(
-        timestampUtc: json['timestampUtc'] as String,
-        latitude: (json['latitude'] as num).toDouble(),
-        longitude: (json['longitude'] as num).toDouble(),
-        altitudeMeters: (json['altitudeMeters'] as num?)?.toDouble(),
-        accuracyMeters: (json['accuracyMeters'] as num).toDouble(),
-        speedMps: (json['speedMps'] as num?)?.toDouble(),
-        isMocked: json['isMocked'] as bool? ?? false,
-      );
+    timestampUtc: json['timestampUtc'] as String,
+    latitude: (json['latitude'] as num).toDouble(),
+    longitude: (json['longitude'] as num).toDouble(),
+    altitudeMeters: (json['altitudeMeters'] as num?)?.toDouble(),
+    accuracyMeters: (json['accuracyMeters'] as num).toDouble(),
+    speedMps: (json['speedMps'] as num?)?.toDouble(),
+    isMocked: json['isMocked'] as bool? ?? false,
+  );
 }
 
 class WorkStep {
@@ -103,37 +103,38 @@ class WorkStep {
   });
 
   Map<String, dynamic> toJson() => {
-        'stepId': stepId,
-        'taskId': taskId,
-        'stepIndex': stepIndex,
-        'title': title,
-        'description': description,
-        'requiresPhoto': requiresPhoto,
-        'requiresVideo': requiresVideo,
-        'targetLatitude': targetLatitude,
-        'targetLongitude': targetLongitude,
-        'targetRadiusMeters': targetRadiusMeters,
-        'status': status.name.toUpperCase(),
-        'evidenceId': evidenceId,
-      };
+    'stepId': stepId,
+    'taskId': taskId,
+    'stepIndex': stepIndex,
+    'title': title,
+    'description': description,
+    'requiresPhoto': requiresPhoto,
+    'requiresVideo': requiresVideo,
+    'targetLatitude': targetLatitude,
+    'targetLongitude': targetLongitude,
+    'targetRadiusMeters': targetRadiusMeters,
+    'status': status.name.toUpperCase(),
+    'evidenceId': evidenceId,
+  };
 
   factory WorkStep.fromJson(Map<String, dynamic> json) => WorkStep(
-        stepId: json['stepId'] as String,
-        taskId: json['taskId'] as String,
-        stepIndex: json['stepIndex'] as int,
-        title: json['title'] as String,
-        description: json['description'] as String? ?? '',
-        requiresPhoto: json['requiresPhoto'] as bool? ?? true,
-        requiresVideo: json['requiresVideo'] as bool? ?? false,
-        targetLatitude: (json['targetLatitude'] as num).toDouble(),
-        targetLongitude: (json['targetLongitude'] as num).toDouble(),
-        targetRadiusMeters: (json['targetRadiusMeters'] as num?)?.toDouble() ?? 100.0,
-        status: WorkExecutionStatus.values.firstWhere(
-          (e) => e.name.toUpperCase() == (json['status'] as String? ?? 'READY'),
-          orElse: () => WorkExecutionStatus.ready,
-        ),
-        evidenceId: json['evidenceId'] as String?,
-      );
+    stepId: json['stepId'] as String,
+    taskId: json['taskId'] as String,
+    stepIndex: json['stepIndex'] as int,
+    title: json['title'] as String,
+    description: json['description'] as String? ?? '',
+    requiresPhoto: json['requiresPhoto'] as bool? ?? true,
+    requiresVideo: json['requiresVideo'] as bool? ?? false,
+    targetLatitude: (json['targetLatitude'] as num).toDouble(),
+    targetLongitude: (json['targetLongitude'] as num).toDouble(),
+    targetRadiusMeters:
+        (json['targetRadiusMeters'] as num?)?.toDouble() ?? 100.0,
+    status: WorkExecutionStatus.values.firstWhere(
+      (e) => e.name.toUpperCase() == (json['status'] as String? ?? 'READY'),
+      orElse: () => WorkExecutionStatus.ready,
+    ),
+    evidenceId: json['evidenceId'] as String?,
+  );
 }
 
 class CapturedEvidence {
@@ -177,24 +178,66 @@ class CapturedEvidence {
     this.locationSamples = const [],
   });
 
+  factory CapturedEvidence.fromJson(Map<String, dynamic> json) =>
+      CapturedEvidence(
+        evidenceId: json['evidenceId'] as String,
+        taskId: json['taskId'] as String,
+        stepId: json['stepId'] as String,
+        supervisorId: json['supervisorId'] as String? ?? '',
+        kind: EvidenceKind.values.firstWhere(
+          (value) =>
+              value.name.toUpperCase() == (json['kind'] as String? ?? 'PHOTO'),
+          orElse: () => EvidenceKind.photo,
+        ),
+        status: EvidenceStatus.values.firstWhere(
+          (value) =>
+              value.name.toUpperCase() ==
+              (json['status'] as String? ?? 'UPLOAD_PENDING'),
+          orElse: () => EvidenceStatus.uploadPending,
+        ),
+        originalFilePath: json['originalFilePath'] as String? ?? '',
+        proofFilePath: json['proofFilePath'] as String? ?? '',
+        originalSha256: json['originalSha256'] as String?,
+        proofSha256: json['proofSha256'] as String?,
+        captureTimeUtc: json['captureTimeUtc'] as String,
+        startLatitude: (json['startLatitude'] as num).toDouble(),
+        startLongitude: (json['startLongitude'] as num).toDouble(),
+        gpsAccuracyMeters: (json['gpsAccuracyMeters'] as num).toDouble(),
+        distanceToTargetMeters: (json['distanceToTargetMeters'] as num?)
+            ?.toDouble(),
+        geoVerdict: GeoVerdict.values.firstWhere(
+          (value) =>
+              value.name.toUpperCase() ==
+              (json['geoVerdict'] as String? ?? 'NO_FIX'),
+          orElse: () => GeoVerdict.noFix,
+        ),
+        exceptionReason: json['exceptionReason'] as String?,
+        locationSamples: (json['locationSamples'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+              (sample) => GeoSample.fromJson(Map<String, dynamic>.from(sample)),
+            )
+            .toList(),
+      );
+
   Map<String, dynamic> toJson() => {
-        'evidenceId': evidenceId,
-        'taskId': taskId,
-        'stepId': stepId,
-        'supervisorId': supervisorId,
-        'kind': kind.name.toUpperCase(),
-        'status': status.name.toUpperCase(),
-        'originalFilePath': originalFilePath,
-        'proofFilePath': proofFilePath,
-        'originalSha256': originalSha256,
-        'proofSha256': proofSha256,
-        'captureTimeUtc': captureTimeUtc,
-        'startLatitude': startLatitude,
-        'startLongitude': startLongitude,
-        'gpsAccuracyMeters': gpsAccuracyMeters,
-        'distanceToTargetMeters': distanceToTargetMeters,
-        'geoVerdict': geoVerdict.name.toUpperCase(),
-        'exceptionReason': exceptionReason,
-        'locationSamples': locationSamples.map((s) => s.toJson()).toList(),
-      };
+    'evidenceId': evidenceId,
+    'taskId': taskId,
+    'stepId': stepId,
+    'supervisorId': supervisorId,
+    'kind': kind.name.toUpperCase(),
+    'status': status.name.toUpperCase(),
+    'originalFilePath': originalFilePath,
+    'proofFilePath': proofFilePath,
+    'originalSha256': originalSha256,
+    'proofSha256': proofSha256,
+    'captureTimeUtc': captureTimeUtc,
+    'startLatitude': startLatitude,
+    'startLongitude': startLongitude,
+    'gpsAccuracyMeters': gpsAccuracyMeters,
+    'distanceToTargetMeters': distanceToTargetMeters,
+    'geoVerdict': geoVerdict.name.toUpperCase(),
+    'exceptionReason': exceptionReason,
+    'locationSamples': locationSamples.map((s) => s.toJson()).toList(),
+  };
 }

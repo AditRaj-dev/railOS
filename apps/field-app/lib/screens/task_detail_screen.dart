@@ -58,7 +58,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final taskId = widget.task['taskId'] as String? ?? '';
     final title = widget.task['title'] as String? ?? '';
     final department = widget.task['department'] as String? ?? 'ENGG';
-    final allCompleted = _steps.isNotEmpty && _steps.every((s) => s.status == WorkExecutionStatus.completed);
+    final allCompleted =
+        _steps.isNotEmpty &&
+        _steps.every((s) => s.status == WorkExecutionStatus.completed);
 
     return Scaffold(
       backgroundColor: RailOSTokens.bg_canvas,
@@ -84,7 +86,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               decoration: const BoxDecoration(
                 color: RailOSTokens.bg_surface,
                 border: Border(
-                  bottom: BorderSide(color: RailOSTokens.border_default, width: 1),
+                  bottom: BorderSide(
+                    color: RailOSTokens.border_default,
+                    width: 1,
+                  ),
                 ),
               ),
               child: Column(
@@ -175,7 +180,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   vertical: RailOSTokens.spacingXs,
                 ),
                 itemCount: _steps.length,
-                separatorBuilder: (_, _) => const SizedBox(height: RailOSTokens.spacingSm),
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: RailOSTokens.spacingSm),
                 itemBuilder: (ctx, i) {
                   final step = _steps[i];
                   final isPhoto = step.requiresPhoto;
@@ -184,7 +190,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   return Container(
                     decoration: BoxDecoration(
                       color: RailOSTokens.bg_panel,
-                      borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
+                      borderRadius: BorderRadius.circular(
+                        RailOSTokens.borderRadiusMd,
+                      ),
                       border: Border.all(
                         color: isDone
                             ? RailOSTokens.status_ok_border
@@ -268,8 +276,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                     icon: const Icon(Icons.refresh, size: 16),
                                     label: const Text('Retake Proof'),
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: RailOSTokens.text_secondary,
-                                      side: const BorderSide(color: RailOSTokens.border_default),
+                                      foregroundColor:
+                                          RailOSTokens.text_secondary,
+                                      side: const BorderSide(
+                                        color: RailOSTokens.border_default,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(
                                           RailOSTokens.borderRadiusSm,
@@ -280,7 +291,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                                   )
                                 : ElevatedButton.icon(
                                     icon: Icon(
-                                      isPhoto ? Icons.camera_alt_outlined : Icons.videocam_outlined,
+                                      isPhoto
+                                          ? Icons.camera_alt_outlined
+                                          : Icons.videocam_outlined,
                                       size: 18,
                                     ),
                                     label: Text(
@@ -322,7 +335,10 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 decoration: const BoxDecoration(
                   color: RailOSTokens.status_ok_bg,
                   border: Border(
-                    top: BorderSide(color: RailOSTokens.status_ok_border, width: 1),
+                    top: BorderSide(
+                      color: RailOSTokens.status_ok_border,
+                      width: 1,
+                    ),
                   ),
                 ),
                 child: const Row(

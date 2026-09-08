@@ -1,6 +1,6 @@
 # Design State: RailOS Control Center
 
-_Last updated: 2026-09-08 by implementation-planning_
+_Last updated: 2026-09-08 by possession-authority-orchestrator_
 
 ## Brief
 - **Problem:** Railway control teams need one legible operational workspace for monitoring corridor state, planning maintenance blocks, comparing feasible plans, and responding to disruption.
@@ -40,6 +40,11 @@ _Last updated: 2026-09-08 by implementation-planning_
 | 2026-09-08 | implementation-orchestrator | Split map implementation into frontend, backend API, and ingestion workstreams with disjoint file ownership | Allows parallel work without overwriting the existing dirty worktree. |
 | 2026-09-08 | implementation-planning | Use hosted OpenRailwayMap raster tiles plus seeded reports anchored to RailOS vector segments | Delivers nationwide visible track coverage now while preserving an API-compatible report contract and honest accuracy boundary. |
 | 2026-09-08 | design-system-alignment | Align Flutter field app UI with Next.js control center design tokens and DESIGN.md | Unifies palette (graphite canvas, signal amber accent, muted semantic statuses, department badges) across desk and field, eliminates banned bright/neon cues, enforces min 48dp touch targets and WCAG AA contrast. |
+| 2026-09-08 | possession-authority-orchestrator | Make the API the single source of truth for legal possession actions | Role-filtered `allowedActions`, structured errors, and checklist state keep desktop and mobile clients from duplicating safety logic. |
+| 2026-09-08 | possession-authority-orchestrator | Execute three file-disjoint workstreams in Auto mode | The user explicitly requested parallel subagent completion; backend/model, Flutter, and Next.js ownership do not overlap. |
+| 2026-09-08 | backend-luna | Require typed T/351 reconnection and OHE re-energisation before close | Terra review reproduced unsafe bypasses; server-owned gates now protect the statutory handback chain. |
+| 2026-09-08 | desk-design-builder-luna | Use query-authenticated WebSocket invalidation plus TanStack Query cache invalidation | Native browser sockets cannot set custom headers; API remains the authoritative source. |
+| 2026-09-08 | implementation-orchestrator | Restore geographic-map regression coverage and add WebGL2/matchMedia fallbacks | Existing test deletion masked a compatibility regression; fallback states must work in non-WebGL test/browser environments. |
 
 ## Open Questions
 - [x] Primary immediate workflow: show all-India railway tracks and simulated track-aligned reported areas on the Network map.
@@ -55,6 +60,11 @@ _Last updated: 2026-09-08 by implementation-planning_
 | Reported-area design brief | `docs/designpowers/briefs/2026-09-08-all-india-railway-map-reported-areas.md` | Approved |
 | Reported-area design spec | `docs/superpowers/specs/2026-09-08-all-india-railway-map-reported-areas-design.md` | Approved |
 | Reported-area implementation plan | `docs/superpowers/plans/2026-09-08-all-india-railway-map-reported-areas.md` | Ready for execution review |
+| Possession authority brief | `docs/designpowers/briefs/2026-09-08-possession-authority-chain.md` | Approved via user-supplied goal |
+| Possession authority personas | `docs/designpowers/personas/2026-09-08-possession-authority-chain-personas.md` | Complete |
+| Possession authority implementation plan | `docs/designpowers/plans/2026-09-08-possession-authority-chain-plan.md` | Approved for execution |
+| Possession authority critique | `docs/designpowers/critiques/2026-09-08-possession-authority-chain.md` | Complete |
+| Possession authority verification | `docs/designpowers/verification/2026-09-08-possession-authority-chain.md` | Complete with environment caveats |
 
 ## Design Debt Register
 
@@ -76,3 +86,12 @@ _Assessment independence: degraded — the three reviewer slots were unavailable
 
 ### 2026-09-08 Luna research → parallel implementation team
 > "Keep MapLibre and deck.gl, but repair the lifecycle and use the MapLibre-specific bridge. Frontend owns rendering and selection, backend owns viewport contracts and geometry filtering, and ingestion owns source snapshots and reproducible railway normalization; never present OSM or synthetic geometry as official operational truth."
+
+### 2026-09-08 possession-authority-orchestrator → Luna implementation team
+> "The server owns legality: return role-filtered actions, explicit checklist state, rule citations, and structured recovery guidance. Backend/model, Flutter field, and Next.js desk work in separate trees; keep the graphite-and-signal-amber system, make every safety state legible without colour, and preserve the repository's existing dirty changes."
+
+### 2026-09-08 backend-luna → Terra reviewer
+> "T/351 reconnection, server-clock lead-ins, day-of clearance, occupancy conflicts, transactional sanctions, typed re-energisation, and browser query authentication are now covered. Focused authority/API tests pass; PostgreSQL restart evidence still needs infrastructure."
+
+### 2026-09-08 desk-design-builder-luna → Terra reviewer
+> "The desk workflow now has role-aware sanctioning, possession board/detail, block-burst analytics, and a read-only field monitor. All 71 tests, TypeScript, and targeted lint pass; the map fallback regression was restored and repaired during integration review."

@@ -1,0 +1,235 @@
+@import "tailwindcss";
+@import "./railos_tokens.css";
+
+:root {
+  /* Foundation colors */
+  --background: #121313;
+  --foreground: #f3efe5;
+
+  /* Surfaces */
+  --bg-canvas: #121313;
+  --bg-surface: #181917;
+  --bg-elevated: #21201d;
+  --bg-panel: #1c1c1a;
+  --bg-overlay: #0a0703;
+
+  /* Typography */
+  --text-primary: #f3efe5;
+  --text-secondary: #c1bbad;
+  --text-muted: #918b80;
+
+  /* Borders */
+  --border-default: #3a372f;
+  --border-subtle: #292722;
+  --border-strong: #554d3f;
+
+  /* Single accent: signal amber */
+  --accent: #e8a317;
+
+  /* Spacing scale */
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-6: 0.375rem;
+  --space-8: 0.5rem;
+  --space-12: 0.75rem;
+  --space-16: 1rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+
+  /* Status tokens - semantic colors with WCAG AA contrast on dark canvas */
+  /* OK/Nominal - success green */
+  --status-ok-bg: #1a3a2a;
+  --status-ok-border: #2d5a42;
+  --status-ok-fg: #8fb38b;
+  --status-ok-text: #c8e6c1;
+
+  /* Info - cyan/sky */
+  --status-info-bg: #1a3a4a;
+  --status-info-border: #2d5a7a;
+  --status-info-fg: #6b9ac4;
+  --status-info-text: #b3d9f2;
+
+  /* Caution - amber */
+  --status-caution-bg: #3a2f1a;
+  --status-caution-border: #5a4a2d;
+  --status-caution-fg: #d39a59;
+  --status-caution-text: #f0c884;
+
+  /* Warning - orange-amber */
+  --status-warning-bg: #3a2a1a;
+  --status-warning-border: #5a4a2d;
+  --status-warning-fg: #e8a317;
+  --status-warning-text: #ffc966;
+
+  /* Critical - red */
+  --status-critical-bg: #3a1a1a;
+  --status-critical-border: #5a2d2d;
+  --status-critical-fg: #d97864;
+  --status-critical-text: #f5a898;
+
+  /* Blocked - purple-gray */
+  --status-blocked-bg: #2a1f3a;
+  --status-blocked-border: #3d2d5a;
+  --status-blocked-fg: #a27dd4;
+  --status-blocked-text: #d9c9f0;
+
+  /* Unknown - muted gray */
+  --status-unknown-bg: #262421;
+  --status-unknown-border: #3a372f;
+  --status-unknown-fg: #918b80;
+  --status-unknown-text: #c1bbad;
+
+  /* Department tokens */
+  /* ENGG - oxidized amber */
+  --dept-engg-bg: #3a2a1a;
+  --dept-engg-border: #5a4a2d;
+  --dept-engg-fg: #d4a059;
+  --dept-engg-text: #e8b77d;
+
+  /* SNT (Signal & Telecom) - signal amber */
+  --dept-snt-bg: #3a2f1a;
+  --dept-snt-border: #5a4a2d;
+  --dept-snt-fg: #e8a317;
+  --dept-snt-text: #ffc966;
+
+  /* TRD (Traction) - muted sage */
+  --dept-trd-bg: #1a3a2a;
+  --dept-trd-border: #2d5a42;
+  --dept-trd-fg: #7aac8f;
+  --dept-trd-text: #a8d4b8;
+
+  /* Objective tokens */
+  /* SAFETY_FIRST - red/critical emphasis */
+  --obj-safety-bg: #3a1a1a;
+  --obj-safety-border: #5a2d2d;
+  --obj-safety-fg: #d97864;
+  --obj-safety-text: #f5a898;
+
+  /* BALANCED - amber/neutral */
+  --obj-balanced-bg: #3a2f1a;
+  --obj-balanced-border: #5a4a2d;
+  --obj-balanced-fg: #d39a59;
+  --obj-balanced-text: #f0c884;
+
+  /* OPERATIONS_FIRST - neutral clay */
+  --obj-operations-bg: #2f2a24;
+  --obj-operations-border: #423d35;
+  --obj-operations-fg: #a39683;
+  --obj-operations-text: #c1b5a3;
+
+  /* Focus and elevation */
+  --focus-ring: var(--accent);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  --shadow-base: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-raised: 0 4px 6px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 20px 25px rgba(0, 0, 0, 0.8);
+  --shadow-overlay: 0 25px 50px rgba(0, 0, 0, 0.9);
+
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* RailOS palette: graphite surfaces, signal amber, muted field status. */
+  --color-slate-50: oklch(0.97 0.015 85);
+  --color-slate-100: oklch(0.93 0.02 85);
+  --color-slate-200: oklch(0.88 0.025 85);
+  --color-slate-300: oklch(0.80 0.03 85);
+  --color-slate-400: oklch(0.67 0.035 85);
+  --color-slate-500: oklch(0.55 0.035 85);
+  --color-slate-600: oklch(0.44 0.03 85);
+  --color-slate-700: oklch(0.34 0.025 85);
+  --color-slate-800: oklch(0.26 0.02 85);
+  --color-slate-900: oklch(0.20 0.018 85);
+  --color-slate-950: oklch(0.13 0.015 85);
+
+  --color-sky-400: oklch(0.78 0.16 75);
+  --color-sky-500: oklch(0.70 0.15 72);
+  --color-sky-600: oklch(0.61 0.14 68);
+  --color-sky-700: oklch(0.52 0.12 65);
+  --color-sky-800: oklch(0.41 0.09 60);
+  --color-sky-900: oklch(0.30 0.07 55);
+  --color-sky-950: oklch(0.18 0.04 60);
+
+  --color-emerald-200: oklch(0.87 0.07 145);
+  --color-emerald-300: oklch(0.80 0.09 145);
+  --color-emerald-400: oklch(0.73 0.10 145);
+  --color-emerald-500: oklch(0.63 0.09 145);
+  --color-emerald-600: oklch(0.53 0.08 145);
+  --color-emerald-700: oklch(0.43 0.07 145);
+  --color-emerald-800: oklch(0.32 0.05 145);
+  --color-emerald-900: oklch(0.24 0.04 145);
+  --color-emerald-950: oklch(0.17 0.025 145);
+
+  --color-amber-200: oklch(0.88 0.07 55);
+  --color-amber-300: oklch(0.81 0.10 55);
+  --color-amber-400: oklch(0.74 0.13 52);
+  --color-amber-500: oklch(0.65 0.12 50);
+  --color-amber-600: oklch(0.56 0.11 48);
+  --color-amber-700: oklch(0.47 0.09 46);
+  --color-amber-800: oklch(0.36 0.07 44);
+  --color-amber-900: oklch(0.26 0.04 42);
+  --color-amber-950: oklch(0.18 0.025 42);
+
+  --color-red-200: oklch(0.86 0.08 30);
+  --color-red-300: oklch(0.79 0.11 30);
+  --color-red-400: oklch(0.72 0.13 30);
+  --color-red-500: oklch(0.63 0.14 28);
+  --color-red-600: oklch(0.54 0.13 27);
+  --color-red-700: oklch(0.44 0.11 26);
+  --color-red-800: oklch(0.34 0.08 24);
+  --color-red-900: oklch(0.24 0.05 22);
+  --color-red-950: oklch(0.17 0.025 22);
+
+  --color-purple-300: oklch(0.80 0.06 35);
+  --color-purple-400: oklch(0.70 0.08 35);
+  --color-purple-500: oklch(0.60 0.08 35);
+  --color-purple-600: oklch(0.50 0.07 35);
+  --color-purple-700: oklch(0.41 0.06 35);
+  --color-purple-800: oklch(0.30 0.04 35);
+  --color-purple-900: oklch(0.23 0.025 35);
+  --color-purple-950: oklch(0.16 0.02 35);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+select,
+a {
+  touch-action: manipulation;
+}
+
+/* Visible focus ring using semantic focus token */
+button:focus-visible,
+select:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

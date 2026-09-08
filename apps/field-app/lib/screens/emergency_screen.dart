@@ -166,8 +166,12 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                 padding: const EdgeInsets.all(RailOSTokens.spacingSm),
                 decoration: BoxDecoration(
                   color: RailOSTokens.status_critical_bg,
-                  borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
-                  border: Border.all(color: RailOSTokens.status_critical_border),
+                  borderRadius: BorderRadius.circular(
+                    RailOSTokens.borderRadiusSm,
+                  ),
+                  border: Border.all(
+                    color: RailOSTokens.status_critical_border,
+                  ),
                 ),
                 child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,7 +203,9 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                 padding: const EdgeInsets.all(RailOSTokens.spacingMd),
                 decoration: BoxDecoration(
                   color: RailOSTokens.bg_panel,
-                  borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
+                  borderRadius: BorderRadius.circular(
+                    RailOSTokens.borderRadiusMd,
+                  ),
                   border: Border.all(color: RailOSTokens.border_default),
                 ),
                 child: Column(
@@ -256,13 +262,11 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                       ),
                       items: _severities
                           .map(
-                            (s) => DropdownMenuItem(
-                              value: s,
-                              child: Text(s),
-                            ),
+                            (s) => DropdownMenuItem(value: s, child: Text(s)),
                           )
                           .toList(),
-                      onChanged: (val) => setState(() => _selectedSeverity = val!),
+                      onChanged: (val) =>
+                          setState(() => _selectedSeverity = val!),
                     ),
                     const SizedBox(height: RailOSTokens.spacingMd),
 
@@ -281,20 +285,21 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                       ),
                       items: _hazards
                           .map(
-                            (h) => DropdownMenuItem(
-                              value: h,
-                              child: Text(h),
-                            ),
+                            (h) => DropdownMenuItem(value: h, child: Text(h)),
                           )
                           .toList(),
-                      onChanged: (val) => setState(() => _selectedHazard = val!),
+                      onChanged: (val) =>
+                          setState(() => _selectedHazard = val!),
                     ),
                     const SizedBox(height: RailOSTokens.spacingMd),
 
                     // Description
                     TextFormField(
                       controller: _descController,
-                      style: const TextStyle(color: RailOSTokens.text_primary, fontSize: 13),
+                      style: const TextStyle(
+                        color: RailOSTokens.text_primary,
+                        fontSize: 13,
+                      ),
                       maxLines: 4,
                       decoration: const InputDecoration(
                         labelText: 'Field Observation & Hazard Details',
@@ -332,9 +337,13 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: RailOSTokens.status_critical_bg,
                     foregroundColor: RailOSTokens.status_critical_text,
-                    side: const BorderSide(color: RailOSTokens.status_critical_border),
+                    side: const BorderSide(
+                      color: RailOSTokens.status_critical_border,
+                    ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+                      borderRadius: BorderRadius.circular(
+                        RailOSTokens.borderRadiusSm,
+                      ),
                     ),
                   ),
                   onPressed: _isSubmitting ? null : _submitReport,

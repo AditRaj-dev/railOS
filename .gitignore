@@ -22,4 +22,18 @@ build/
 *.log
 .superpowers/
 
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.apk
+*.aab
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+
 

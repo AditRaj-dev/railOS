@@ -5,8 +5,11 @@ import 'services/api_client.dart';
 import 'storage/offline_evidence_queue.dart';
 import 'theme/railos_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Restore the session/cache before the first frame so a valid 24-hour
+  // entitlement can open directly into the field surface after a restart.
+  await OfflineEvidenceQueue().initialize();
   runApp(const RailOSFieldApp());
 }
 
@@ -25,6 +28,7 @@ class _RailOSFieldAppState extends State<RailOSFieldApp> {
   @override
   void initState() {
     super.initState();
+    _isLoggedIn = _queue.currentSession?.isOfflineEntitlementValid ?? false;
     _queue.addListener(_handleSessionChange);
   }
 
@@ -35,7 +39,8 @@ class _RailOSFieldAppState extends State<RailOSFieldApp> {
   }
 
   void _handleSessionChange() {
-    final hasValidSession = _queue.currentSession?.isOfflineEntitlementValid ?? false;
+    final hasValidSession =
+        _queue.currentSession?.isOfflineEntitlementValid ?? false;
     if (hasValidSession != _isLoggedIn) {
       setState(() => _isLoggedIn = hasValidSession);
     }

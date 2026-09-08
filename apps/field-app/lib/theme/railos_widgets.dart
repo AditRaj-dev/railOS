@@ -1,15 +1,7 @@
 import 'package:flutter/material.dart';
 import 'railos_tokens.dart';
 
-enum RailOSStatus {
-  ok,
-  info,
-  caution,
-  warning,
-  critical,
-  blocked,
-  unknown,
-}
+enum RailOSStatus { ok, info, caution, warning, critical, blocked, unknown }
 
 /// Status badge / chip with paired icon + label complying with WCAG AA redundancy
 class RailOSStatusChip extends StatelessWidget {
@@ -86,31 +78,35 @@ class RailOSStatusChip extends StatelessWidget {
         break;
     }
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 8,
-        vertical: compact ? 2 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
-        border: Border.all(color: border, width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 12 : 14, color: fg),
-          SizedBox(width: compact ? 4 : 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: text,
-              fontSize: compact ? 11 : 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
+    return Semantics(
+      container: true,
+      label: '$label status',
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 6 : 8,
+          vertical: compact ? 2 : 4,
+        ),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+          border: Border.all(color: border, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: compact ? 12 : 14, color: fg),
+            SizedBox(width: compact ? 4 : 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: text,
+                fontSize: compact ? 11 : 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -120,10 +116,7 @@ class RailOSStatusChip extends StatelessWidget {
 class RailOSDepartmentBadge extends StatelessWidget {
   final String department;
 
-  const RailOSDepartmentBadge({
-    super.key,
-    required this.department,
-  });
+  const RailOSDepartmentBadge({super.key, required this.department});
 
   @override
   Widget build(BuildContext context) {
@@ -133,12 +126,16 @@ class RailOSDepartmentBadge extends StatelessWidget {
     Color text;
     String displayLabel;
 
-    if (deptUpper.contains('SNT') || deptUpper.contains('SIGNAL') || deptUpper.contains('S_AND_T')) {
+    if (deptUpper.contains('SNT') ||
+        deptUpper.contains('SIGNAL') ||
+        deptUpper.contains('S_AND_T')) {
       bg = RailOSTokens.dept_snt_bg;
       border = RailOSTokens.dept_snt_border;
       text = RailOSTokens.dept_snt_text;
       displayLabel = 'S&T / SIGNAL';
-    } else if (deptUpper.contains('TRD') || deptUpper.contains('TRACTION') || deptUpper.contains('OHE')) {
+    } else if (deptUpper.contains('TRD') ||
+        deptUpper.contains('TRACTION') ||
+        deptUpper.contains('OHE')) {
       bg = RailOSTokens.dept_trd_bg;
       border = RailOSTokens.dept_trd_border;
       text = RailOSTokens.dept_trd_text;
@@ -156,21 +153,25 @@ class RailOSDepartmentBadge extends StatelessWidget {
       displayLabel = 'ENG / TRACK';
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
-        border: Border.all(color: border, width: 1),
-      ),
-      child: Text(
-        displayLabel,
-        style: TextStyle(
-          color: text,
-          fontSize: 10,
-          fontFamily: 'monospace',
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.4,
+    return Semantics(
+      container: true,
+      label: '$displayLabel department',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+          border: Border.all(color: border, width: 1),
+        ),
+        child: Text(
+          displayLabel,
+          style: TextStyle(
+            color: text,
+            fontSize: 10,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.4,
+          ),
         ),
       ),
     );
@@ -198,28 +199,32 @@ class RailOSPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border, width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 11,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
+    return Semantics(
+      container: true,
+      label: label,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: border, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: fg),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 11,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

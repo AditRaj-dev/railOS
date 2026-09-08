@@ -37,7 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
       widget.onLoginSuccess();
     } catch (e) {
       setState(() {
-        _errorMessage = 'Authentication failed: ${e.toString().replaceAll('Exception:', '')}';
+        _errorMessage =
+            'Authentication failed: ${e.toString().replaceAll('Exception:', '')}';
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -70,8 +71,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 56,
                       decoration: BoxDecoration(
                         color: RailOSTokens.bg_panel,
-                        borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
-                        border: Border.all(color: RailOSTokens.border_default, width: 1),
+                        borderRadius: BorderRadius.circular(
+                          RailOSTokens.borderRadiusMd,
+                        ),
+                        border: Border.all(
+                          color: RailOSTokens.border_default,
+                          width: 1,
+                        ),
                       ),
                       alignment: Alignment.center,
                       child: Container(
@@ -79,8 +85,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 32,
                         decoration: BoxDecoration(
                           color: RailOSTokens.accent.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
-                          border: Border.all(color: RailOSTokens.accent, width: 1.5),
+                          borderRadius: BorderRadius.circular(
+                            RailOSTokens.borderRadiusSm,
+                          ),
+                          border: Border.all(
+                            color: RailOSTokens.accent,
+                            width: 1.5,
+                          ),
                         ),
                         alignment: Alignment.center,
                         child: const Text(
@@ -121,10 +132,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Language Switcher using Design Tokens
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: RailOSTokens.bg_panel,
-                      borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
+                      borderRadius: BorderRadius.circular(
+                        RailOSTokens.borderRadiusMd,
+                      ),
                       border: Border.all(color: RailOSTokens.border_default),
                     ),
                     child: Row(
@@ -142,15 +158,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           selectedColor: RailOSTokens.bg_elevated,
                           backgroundColor: Colors.transparent,
                           labelStyle: TextStyle(
-                            color: !isHindi ? RailOSTokens.accent : RailOSTokens.text_muted,
-                            fontWeight: !isHindi ? FontWeight.bold : FontWeight.normal,
+                            color: !isHindi
+                                ? RailOSTokens.accent
+                                : RailOSTokens.text_muted,
+                            fontWeight: !isHindi
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 12,
                           ),
                           side: BorderSide(
-                            color: !isHindi ? RailOSTokens.accent : RailOSTokens.border_subtle,
+                            color: !isHindi
+                                ? RailOSTokens.accent
+                                : RailOSTokens.border_subtle,
                           ),
                           onSelected: (selected) {
-                            if (selected) setState(() => AppStrings.currentLanguage = 'en');
+                            if (selected)
+                              setState(() => AppStrings.currentLanguage = 'en');
                           },
                         ),
                         const SizedBox(width: 8),
@@ -160,15 +183,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           selectedColor: RailOSTokens.bg_elevated,
                           backgroundColor: Colors.transparent,
                           labelStyle: TextStyle(
-                            color: isHindi ? RailOSTokens.accent : RailOSTokens.text_muted,
-                            fontWeight: isHindi ? FontWeight.bold : FontWeight.normal,
+                            color: isHindi
+                                ? RailOSTokens.accent
+                                : RailOSTokens.text_muted,
+                            fontWeight: isHindi
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 12,
                           ),
                           side: BorderSide(
-                            color: isHindi ? RailOSTokens.accent : RailOSTokens.border_subtle,
+                            color: isHindi
+                                ? RailOSTokens.accent
+                                : RailOSTokens.border_subtle,
                           ),
                           onSelected: (selected) {
-                            if (selected) setState(() => AppStrings.currentLanguage = 'hi');
+                            if (selected)
+                              setState(() => AppStrings.currentLanguage = 'hi');
                           },
                         ),
                       ],
@@ -181,7 +211,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     padding: const EdgeInsets.all(RailOSTokens.spacingLg),
                     decoration: BoxDecoration(
                       color: RailOSTokens.bg_panel,
-                      borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusMd),
+                      borderRadius: BorderRadius.circular(
+                        RailOSTokens.borderRadiusMd,
+                      ),
                       border: Border.all(color: RailOSTokens.border_default),
                     ),
                     child: Column(
@@ -228,11 +260,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         if (_errorMessage != null) ...[
                           Container(
-                            padding: const EdgeInsets.all(RailOSTokens.spacingSm),
+                            padding: const EdgeInsets.all(
+                              RailOSTokens.spacingSm,
+                            ),
                             decoration: BoxDecoration(
                               color: RailOSTokens.status_critical_bg,
-                              borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
-                              border: Border.all(color: RailOSTokens.status_critical_border),
+                              borderRadius: BorderRadius.circular(
+                                RailOSTokens.borderRadiusSm,
+                              ),
+                              border: Border.all(
+                                color: RailOSTokens.status_critical_border,
+                              ),
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,7 +305,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               backgroundColor: RailOSTokens.accent,
                               foregroundColor: RailOSTokens.bg_canvas,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+                                borderRadius: BorderRadius.circular(
+                                  RailOSTokens.borderRadiusSm,
+                                ),
                               ),
                             ),
                             child: _isLoading
@@ -296,10 +336,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Offline notice with subtle border & icon
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: RailOSTokens.bg_surface,
-                      borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+                      borderRadius: BorderRadius.circular(
+                        RailOSTokens.borderRadiusSm,
+                      ),
                       border: Border.all(color: RailOSTokens.border_subtle),
                     ),
                     child: const Row(

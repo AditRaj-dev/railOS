@@ -23,7 +23,10 @@ from .enums import (
     MachineType,
     ObjectiveProfile,
     PlanStatus,
+    PossessionState,
+    SanctionAuthority,
     Severity,
+    SignatureDecision,
     TaskStatus,
     TaskType,
     Track,
@@ -546,5 +549,170 @@ class EmergencyReport(BaseModel):
     photoEvidenceId: str | None = None
     reportedAtUtc: str = ""
     status: str = "OPEN"
+
+
+# --- Sanction chain contracts ------------------------------------------------
+
+
+class AuthoritySignature(BaseModel):
+    signatureId: str
+    authority: SanctionAuthority
+    decision: SignatureDecision = SignatureDecision.GRANTED
+    role: str
+    userId: str
+    reason: str = ""
+    formReference: str = ""
+    signedAtUtc: str
+    planVersion: int
+    possessionId: str | None = None
+
+
+class SanctionChain(BaseModel):
+    planId: str
+    planVersion: int
+    requiredAuthorities: list[SanctionAuthority] = Field(default_factory=list)
+    signatures: list[AuthoritySignature] = Field(default_factory=list)
+    complete: bool = False
+    refused: bool = False
+    derivedFrom: list[str] = Field(default_factory=list)
+    backfilled: bool = False
+
+
+# --- Possession runtime entities ---------------------------------------------
+
+
+class FormT351(BaseModel):
+    formNumber: str
+    sectionId: str
+    track: Track
+    issuedBy: str
+    issuedAtUtc: str
+    endorsedBy: str | None = None
+    endorsedAtUtc: str | None = None
+    reconnectedBy: str | None = None
+    reconnectedAtUtc: str | None = None
+    status: str = "ISSUED"  # ISSUED, ENDORSED, RECONNECTED, CLOSED, CANCELLED
+    remarks: str = ""
+
+
+class PermitToWork(BaseModel):
+    ptwNumber: str
+    oheSection: str
+    isolatorNumber: str
+    issuedBy: str
+    issuedAtUtc: str
+    earthingConfirmed: bool = False
+    cancelledBy: str | None = None
+    cancelledAtUtc: str | None = None
+    reEnergised: bool = False
+    reEnergisedBy: str | None = None
+    reEnergisedAtUtc: str | None = None
+    dischargeRodsRemoved: bool = False
+    status: str = "ISSUED"  # PENDING (earthing), ISSUED, CANCELLED
+    remarks: str = ""
+
+
+class ProtectionRecord(BaseModel):
+    bannerFlagsPlaced: bool = False
+    detonatorCount: int = Field(default=0, ge=0)
+    handSignalPosted: bool = False
+    plantedBy: str = ""
+    plantedAtUtc: str = ""
+    ruleCitation: str = "IRPWM 806"
+    remarks: str = ""
+
+
+class CorrespondenceTest(BaseModel):
+    testId: str
+    testedBy: str
+    startAtUtc: str
+    completedAtUtc: str
+    durationMinutes: int = Field(ge=0)
+    pointsTested: bool = True
+    signalsTested: bool = True
+    trackCircuitsTested: bool = True
+    passed: bool = True
+    ruleCitation: str = "HC-006"
+    remarks: str = ""
+
+
+class FitnessCertificate(BaseModel):
+    certificateNumber: str
+    certifiedBy: str
+    certifiedAtUtc: str
+    tsrSpeedKmph: int = 20  # 20 / 45 / 75 TSR ladder
+    trackFitForTraffic: bool = True
+    overheadClearanceFit: bool = True
+    signallingFit: bool = True
+    ruleCitation: str = "HC-018"
+    remarks: str = ""
+
+    @model_validator(mode="after")
+    def _validate_tsr_ladder(self) -> "FitnessCertificate":
+        if self.tsrSpeedKmph not in {20, 45, 75}:
+            raise ValueError("tsrSpeedKmph must be one of 20, 45, or 75 (HC-018)")
+        return self
+
+
+class PossessionTransition(BaseModel):
+    transitionId: str
+    fromState: PossessionState
+    toState: PossessionState
+    action: str
+    actor: str
+    role: str
+    occurredAtUtc: str
+    clientEventAtUtc: str | None = None
+    ruleCitation: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+    replayed: bool = False
+
+
+class BlockBurst(BaseModel):
+    burstId: str
+    possessionId: str
+    planId: str
+    sectionId: str
+    track: Track
+    department: str = "ENGG"
+    plannedEndUtc: str
+    actualCloseUtc: str
+    overrunMinutes: int = Field(ge=0)
+    causeCategory: str = "EXECUTION"
+    remarks: str = ""
+    occurredAtUtc: str = ""
+
+
+class Possession(BaseModel):
+    possessionId: str
+    planId: str
+    planVersion: int
+    blockId: str
+    sectionId: str
+    track: Track
+    state: PossessionState = PossessionState.SANCTIONED
+    plannedStartUtc: str
+    plannedEndUtc: str
+    actualStartUtc: str | None = None
+    actualEndUtc: str | None = None
+    deferralCount: int = 0
+    deferredUntilUtc: str | None = None
+    requiresPTW: bool = False
+    requiresT351: bool = False
+    requiresCorrespondenceTest: bool = False
+    stationClosed: bool = False
+    stationClosedBy: str | None = None
+    stationClosedAtUtc: str | None = None
+    formT351: FormT351 | None = None
+    permitToWork: PermitToWork | None = None
+    protectionRecord: ProtectionRecord | None = None
+    correspondenceTest: CorrespondenceTest | None = None
+    fitnessCertificate: FitnessCertificate | None = None
+    transitions: list[PossessionTransition] = Field(default_factory=list)
+    assignedTaskIds: list[str] = Field(default_factory=list)
+    department: str = "ENGG"
+    leadInMinutes: int = 0
+    createdAtUtc: str = ""
+    updatedAtUtc: str = ""
 
 

@@ -1,0 +1,2509 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RailOS Design System — Living Control-Room Specification</title>
+  <style>
+    /* ==========================================================================
+       RailOS Canonical Design Tokens & System CSS
+       Based directly on DESIGN_SYSTEM.md
+       ========================================================================== */
+    :root {
+      /* Foundation Backgrounds */
+      --bg-canvas: #090c10;
+      --bg-surface: #0d1117;
+      --bg-elevated: #161b22;
+      --bg-panel: #13171f;
+      --bg-overlay: rgba(9, 12, 16, 0.85);
+
+      /* Typography Colors */
+      --text-primary: #f0f6fc;
+      --text-secondary: #9ca3af;
+      --text-muted: #627284;
+      --text-inverse: #090c10;
+
+      /* Structural Borders */
+      --border-subtle: #1e2633;
+      --border-default: #263040;
+      --border-strong: #3d4b60;
+
+      /* Semantic Operational Status */
+      --status-neutral: #64748b;
+      --status-info: #38bdf8;
+      --status-success: #22c55e;
+      --status-warning: #f59e0b;
+      --status-critical: #ef4444;
+      --status-paused: #a855f7;
+
+      /* Indian Railways Department Identities */
+      --dept-engineering: #3b82f6; /* Civil / P-Way */
+      --dept-snt: #ec4899;         /* Signal & Telecom */
+      --dept-traction: #eab308;    /* Electrical / OHE */
+
+      /* Objective Modes */
+      --mode-safety: #10b981;
+      --mode-balanced: #6366f1;
+      --mode-operations: #f97316;
+
+      /* Corridor Risk Bands */
+      --risk-low: #10b981;
+      --risk-guarded: #0284c7;
+      --risk-elevated: #f59e0b;
+      --risk-high: #f97316;
+      --risk-severe: #ef4444;
+
+      /* Spacing Scale */
+      --space-2: 2px;
+      --space-4: 4px;
+      --space-6: 6px;
+      --space-8: 8px;
+      --space-12: 12px;
+      --space-16: 16px;
+      --space-20: 20px;
+      --space-24: 24px;
+      --space-32: 32px;
+
+      /* Radii */
+      --radius-sm: 2px;
+      --radius-md: 4px;
+      --radius-lg: 6px;
+
+      /* Elevation / Shadows */
+      --shadow-base: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --shadow-raised: 0 4px 12px rgba(0, 0, 0, 0.6);
+      --shadow-modal: 0 12px 28px rgba(0, 0, 0, 0.85);
+
+      /* Typography */
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    /* Reset & Base */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.45;
+      letter-spacing: -0.01em;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Custom Control-Room Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-canvas);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-default);
+      border-radius: var(--radius-sm);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--border-strong);
+    }
+
+    /* Top Bar */
+    header.system-header {
+      height: 48px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-default);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-16);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-12);
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: var(--space-8);
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      background: #1e293b;
+      color: var(--status-info);
+      padding: 2px 6px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+    }
+
+    .header-pills {
+      display: flex;
+      align-items: center;
+      gap: var(--space-12);
+    }
+
+    .telemetry-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-6);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--bg-elevated);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--status-success);
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+    }
+
+    .nav-search-input {
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      width: 240px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .nav-search-input:focus {
+      border-color: var(--status-info);
+    }
+
+    /* System Layout */
+    .system-body {
+      display: flex;
+      flex: 1;
+      min-height: calc(100vh - 48px);
+    }
+
+    /* Left Navigation Rail */
+    aside.nav-sidebar {
+      width: 250px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-default);
+      overflow-y: auto;
+      padding: var(--space-12) 0;
+      position: sticky;
+      top: 48px;
+      height: calc(100vh - 48px);
+      flex-shrink: 0;
+    }
+
+    .nav-group-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: var(--space-8) var(--space-16) var(--space-4);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px var(--space-16);
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 500;
+      border-left: 2px solid transparent;
+      transition: all 0.12s;
+    }
+    .nav-item:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+    .nav-item.active {
+      background: #19212d;
+      color: var(--text-primary);
+      border-left-color: var(--status-info);
+    }
+
+    .nav-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Viewport */
+    main.doc-viewport {
+      flex: 1;
+      padding: var(--space-24) var(--space-32);
+      max-width: 1380px;
+      margin: 0 auto;
+      overflow-x: hidden;
+    }
+
+    /* Sections */
+    section.doc-section {
+      margin-bottom: var(--space-32);
+      scroll-margin-top: 64px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-default);
+      padding-bottom: var(--space-8);
+      margin-bottom: var(--space-16);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-8);
+    }
+
+    .section-id {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--status-info);
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+    }
+
+    .section-desc {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: var(--space-16);
+      max-width: 900px;
+    }
+
+    /* Cards & Containers */
+    .control-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-16);
+      margin-bottom: var(--space-16);
+    }
+
+    .control-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-12);
+      padding-bottom: var(--space-8);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .control-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+    }
+
+    /* Grid Helpers */
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-16); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-16); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-12); }
+    .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--space-8); }
+
+    @media (max-width: 1100px) {
+      .grid-4, .grid-3 { grid-template-columns: repeat(2, 1fr); }
+      .grid-6 { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    /* Principles */
+    .principle-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: var(--space-12);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+    .principle-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--status-info);
+    }
+    .principle-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .principle-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Dos and Don'ts */
+    .rule-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-16);
+    }
+    .rule-column {
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-default);
+      padding: var(--space-16);
+    }
+    .rule-column.good {
+      border-top: 3px solid var(--status-success);
+    }
+    .rule-column.bad {
+      border-top: 3px solid var(--status-critical);
+    }
+    .rule-column-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-12);
+      display: flex;
+      align-items: center;
+      gap: var(--space-6);
+    }
+    .good .rule-column-title { color: var(--status-success); }
+    .bad .rule-column-title { color: var(--status-critical); }
+    .rule-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-8);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .rule-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-6);
+    }
+
+    /* Swatches */
+    .color-swatch-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .color-swatch-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .swatch-preview {
+      height: 48px;
+      width: 100%;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 var(--space-8);
+    }
+    .swatch-info {
+      padding: var(--space-8);
+    }
+    .swatch-token {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .swatch-hex {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 2px;
+    }
+    .swatch-role {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      line-height: 1.3;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+    .badge-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .badge-neutral { background: rgba(100, 116, 139, 0.15); color: #94a3b8; border-color: rgba(100, 116, 139, 0.3); }
+    .badge-info { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+    .badge-success { background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3); }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
+    .badge-critical { background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
+    .badge-paused { background: rgba(168, 85, 247, 0.15); color: #c084fc; border-color: rgba(168, 85, 247, 0.3); }
+
+    .badge-dept-eng { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.35); }
+    .badge-dept-snt { background: rgba(236, 72, 153, 0.15); color: #f472b6; border-color: rgba(236, 72, 153, 0.35); }
+    .badge-dept-traction { background: rgba(234, 179, 8, 0.15); color: #facc15; border-color: rgba(234, 179, 8, 0.35); }
+
+    .badge-obj-safety { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
+    .badge-obj-balanced { background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); }
+    .badge-obj-ops { background: rgba(249, 115, 22, 0.15); color: #fb923c; border-color: rgba(249, 115, 22, 0.3); }
+
+    /* Risk Indicator */
+    .risk-bar {
+      display: inline-flex;
+      gap: 2px;
+      align-items: center;
+    }
+    .risk-segment {
+      width: 5px;
+      height: 10px;
+      background: var(--border-default);
+      border-radius: 1px;
+    }
+    .risk-segment.active-low { background: var(--risk-low); }
+    .risk-segment.active-guarded { background: var(--risk-guarded); }
+    .risk-segment.active-elevated { background: var(--risk-elevated); }
+    .risk-segment.active-high { background: var(--risk-high); }
+    .risk-segment.active-severe { background: var(--risk-severe); }
+
+    /* Type Scale */
+    .type-row {
+      display: grid;
+      grid-template-columns: 180px 140px 120px 1fr;
+      align-items: baseline;
+      padding: var(--space-8) 0;
+      border-bottom: 1px solid var(--border-subtle);
+      gap: var(--space-12);
+    }
+    .type-name {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .type-meta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .mono-value {
+      font-family: var(--font-mono);
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Operational Table */
+    .op-table-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+    }
+    .op-table-toolbar {
+      padding: var(--space-8) var(--space-12);
+      border-bottom: 1px solid var(--border-default);
+      background: var(--bg-panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-8);
+      flex-wrap: wrap;
+    }
+    .filter-chips-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .filter-chip {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      user-select: none;
+    }
+    .filter-chip.active {
+      background: var(--bg-elevated);
+      border-color: var(--status-info);
+      color: var(--text-primary);
+    }
+
+    table.op-data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+    table.op-data-table th {
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border-default);
+      position: sticky;
+      top: 0;
+      white-space: nowrap;
+    }
+    table.op-data-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    table.op-data-table tbody tr {
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    table.op-data-table tbody tr:hover {
+      background: #161f2b;
+    }
+    table.op-data-table tbody tr.selected {
+      background: #192535;
+      outline: 1px solid var(--status-info);
+    }
+
+    /* Gantt */
+    .gantt-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .gantt-header {
+      display: flex;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-default);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .gantt-axis-label {
+      width: 180px;
+      flex-shrink: 0;
+      padding: 8px 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-right: 1px solid var(--border-subtle);
+    }
+    .gantt-time-scale {
+      flex: 1;
+      display: flex;
+    }
+    .gantt-hour-col {
+      flex: 1;
+      padding: 8px 4px;
+      text-align: center;
+      color: var(--text-secondary);
+      border-right: 1px dashed var(--border-subtle);
+    }
+
+    .gantt-row {
+      display: flex;
+      border-bottom: 1px solid var(--border-subtle);
+      min-height: 38px;
+      align-items: center;
+      position: relative;
+    }
+    .gantt-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .gantt-row-title {
+      width: 180px;
+      flex-shrink: 0;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .gantt-track-lane {
+      flex: 1;
+      height: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      padding: 0 4px;
+    }
+
+    .train-path-bar {
+      position: absolute;
+      height: 20px;
+      background: #1e3a8a;
+      border: 1px solid #3b82f6;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: #93c5fd;
+      display: flex;
+      align-items: center;
+      padding: 0 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .train-path-freight {
+      background: #374151;
+      border-color: #6b7280;
+      color: #d1d5db;
+    }
+    .block-bar {
+      position: absolute;
+      height: 24px;
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid var(--status-success);
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-weight: 600;
+      color: #a7f3d0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+
+    /* Schematic Corridor Map */
+    .schematic-corridor-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-20);
+    }
+    .corridor-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      margin: 40px 20px;
+    }
+    .corridor-track-bg {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 4px;
+      background: var(--border-default);
+      transform: translateY(-50%);
+      z-index: 1;
+    }
+    .corridor-track-progress {
+      position: absolute;
+      left: 0;
+      width: 65%;
+      top: 50%;
+      height: 4px;
+      background: var(--status-info);
+      transform: translateY(-50%);
+      z-index: 2;
+    }
+
+    .station-node {
+      position: relative;
+      z-index: 3;
+      background: var(--bg-panel);
+      border: 2px solid var(--border-strong);
+      border-radius: 50%;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 11px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .station-node:hover, .station-node.active {
+      border-color: var(--status-info);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+      background: #111d2e;
+    }
+    .station-node.warning {
+      border-color: var(--status-warning);
+    }
+    .station-label {
+      position: absolute;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    /* Metric Cards */
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: var(--space-12);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .metric-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .metric-value-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .delta-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+    }
+    .delta-positive { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+    .delta-negative { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+    /* Drawer Inspector */
+    .drawer-overlay {
+      position: fixed;
+      top: 48px;
+      right: 0;
+      bottom: 0;
+      width: 380px;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border-default);
+      box-shadow: var(--shadow-modal);
+      padding: var(--space-20);
+      transform: translateX(100%);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 90;
+      overflow-y: auto;
+    }
+    .drawer-overlay.open {
+      transform: translateX(0);
+    }
+    .drawer-close-btn {
+      background: none;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+    }
+    .drawer-close-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-6);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn-primary {
+      background: #1d4ed8;
+      border-color: #2563eb;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+    .btn-secondary:hover {
+      background: #1e2634;
+      border-color: var(--border-strong);
+    }
+    .btn-danger {
+      background: #991b1b;
+      border-color: #b91c1c;
+      color: #ffffff;
+    }
+    .btn-sm {
+      padding: 3px 8px;
+      font-size: 11px;
+    }
+
+    /* Code Box */
+    .code-box {
+      background: #06080b;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: var(--space-12);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #94a3b8;
+      position: relative;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--status-info);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-raised);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.2s;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Mobile Frame */
+    .mobile-frame {
+      width: 320px;
+      background: #090c10;
+      border: 2px solid var(--border-strong);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: var(--shadow-raised);
+    }
+    .mobile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .mobile-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top System Bar -->
+  <header class="system-header">
+    <div class="brand-group">
+      <div class="brand-logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--status-info);">
+          <rect x="4" y="3" width="16" height="16" rx="2"></rect>
+          <path d="M4 11h16"></path>
+          <path d="M12 3v8"></path>
+          <path d="m8 19-2 3"></path>
+          <path d="m16 19 2 3"></path>
+          <circle cx="8" cy="15" r="1"></circle>
+          <circle cx="16" cy="15" r="1"></circle>
+        </svg>
+        <span>RailOS</span>
+      </div>
+      <span class="brand-badge">DESIGN SYSTEM v1.0</span>
+      <span class="telemetry-pill">
+        <span class="pulse-dot"></span>
+        <span>CONTROL ROOM SPEC</span>
+      </span>
+    </div>
+
+    <div class="header-pills">
+      <input type="text" id="systemSearch" class="nav-search-input" placeholder="Search tokens & components (e.g. status, table, risk)...">
+      <div class="telemetry-pill">
+        <span>ZONE:</span> <strong style="color:var(--text-primary);">NORTHERN RAILWAY (NR)</strong>
+      </div>
+      <div class="telemetry-pill mono-value" id="clockDisplay">12:36:02 IST</div>
+      <button class="btn btn-secondary btn-sm" onclick="toggleDrawer(true)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <path d="M15 3v18"></path>
+        </svg>
+        Inspector
+      </button>
+    </div>
+  </header>
+
+  <!-- System Body -->
+  <div class="system-body">
+    
+    <!-- Navigation Sidebar -->
+    <aside class="nav-sidebar">
+      <div class="nav-group-title">Foundations</div>
+      <a href="#philosophy" class="nav-item active">
+        <span>1. Philosophy</span>
+        <span class="nav-tag">7 Rules</span>
+      </a>
+      <a href="#character" class="nav-item">
+        <span>2. Visual Character</span>
+        <span class="nav-tag">Tone</span>
+      </a>
+      <a href="#colors" class="nav-item">
+        <span>3. Color System</span>
+        <span class="nav-tag">Tokens</span>
+      </a>
+      <a href="#typography" class="nav-item">
+        <span>4. Typography</span>
+        <span class="nav-tag">Scale</span>
+      </a>
+      <a href="#spacing" class="nav-item">
+        <span>5. Spacing & Grid</span>
+        <span class="nav-tag">Scale</span>
+      </a>
+      <a href="#borders" class="nav-item">
+        <span>6. Radius & Borders</span>
+        <span class="nav-tag">Geometry</span>
+      </a>
+      <a href="#elevation" class="nav-item">
+        <span>7. Elevation</span>
+        <span class="nav-tag">Layers</span>
+      </a>
+      <a href="#iconography" class="nav-item">
+        <span>8. Iconography</span>
+        <span class="nav-tag">Symbols</span>
+      </a>
+
+      <div class="nav-group-title">Semantics & Primitives</div>
+      <a href="#status-semantics" class="nav-item">
+        <span>9. Status Semantics</span>
+        <span class="nav-tag">4 Matrices</span>
+      </a>
+      <a href="#components" class="nav-item">
+        <span>10. Core Components</span>
+        <span class="nav-tag">37 Items</span>
+      </a>
+      <a href="#table-rules" class="nav-item">
+        <span>11. Dense Table Spec</span>
+        <span class="nav-tag">Live</span>
+      </a>
+      <a href="#timeline-rules" class="nav-item">
+        <span>12. Timeline Gantt</span>
+        <span class="nav-tag">Interactive</span>
+      </a>
+      <a href="#map-rules" class="nav-item">
+        <span>13. Schematic Network</span>
+        <span class="nav-tag">Corridor</span>
+      </a>
+
+      <div class="nav-group-title">Operational Workflows</div>
+      <a href="#replan-workflow" class="nav-item">
+        <span>14. Replan & Diff</span>
+        <span class="nav-tag">Emergency</span>
+      </a>
+      <a href="#mobile-rules" class="nav-item">
+        <span>15. Mobile Field PWA</span>
+        <span class="nav-tag">Handheld</span>
+      </a>
+      <a href="#copy-style" class="nav-item">
+        <span>16. Content & Copy</span>
+        <span class="nav-tag">Rules</span>
+      </a>
+      <a href="#accessibility" class="nav-item">
+        <span>17. Accessibility</span>
+        <span class="nav-tag">Standard</span>
+      </a>
+      <a href="#deliverables" class="nav-item">
+        <span>18. CSS Tokens & Export</span>
+        <span class="nav-tag">JSON/CSS</span>
+      </a>
+    </aside>
+
+    <!-- Main Viewport -->
+    <main class="doc-viewport">
+
+      <!-- 1. Philosophy -->
+      <section id="philosophy" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 01</span>
+            Design Philosophy
+          </h2>
+          <span class="badge badge-info">OPERATIONAL FIRST</span>
+        </div>
+        <p class="section-desc">
+          RailOS is a railway control-room system and maintenance planning console. It prioritizes operational clarity, density without chaos, and decision support over decorative consumer trends.
+        </p>
+
+        <div class="grid-3">
+          <div class="principle-box">
+            <span class="principle-num">01. CLARITY</span>
+            <div class="principle-title">Operational Clarity Over Visual Flair</div>
+            <div class="principle-text">Prioritize rapid scannability and actionable insights. Every visual element must serve decision-making.</div>
+          </div>
+          <div class="principle-box">
+            <span class="principle-num">02. DENSITY</span>
+            <div class="principle-title">Density Without Chaos</div>
+            <div class="principle-text">Indian Railways operators review thousands of assets. High density is a necessity, organized by strict grid discipline.</div>
+          </div>
+          <div class="principle-box">
+            <span class="principle-num">03. SURFACES</span>
+            <div class="principle-title">Dark Surfaces for Control Rooms</div>
+            <div class="principle-text">Deep calibrated dark theme reduces optical fatigue during 12-hour shifts in railway section control rooms.</div>
+          </div>
+          <div class="principle-box">
+            <span class="principle-num">04. SEMANTICS</span>
+            <div class="principle-title">Strong Semantic Status System</div>
+            <div class="principle-text">Standardized colors for neutral, info, warning, critical, and departments. Never rely on color alone; always pair with text/icons.</div>
+          </div>
+          <div class="principle-box">
+            <span class="principle-num">05. HIERARCHY</span>
+            <div class="principle-title">Consistent Hierarchy</div>
+            <div class="principle-text">Network Situation &rarr; Immediate Risk &rarr; Today's Operations &rarr; Recommended Actions. Avoid 12 equal-weight cards.</div>
+          </div>
+          <div class="principle-box">
+            <span class="principle-num">06. EXPLANATION</span>
+            <div class="principle-title">Explain State Changes Clearly</div>
+            <div class="principle-text">Automated block recommendations and replans must explain their algorithmic trade-offs transparently.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Visual Character -->
+      <section id="character" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 02</span>
+            Visual Character & Rules
+          </h2>
+          <span class="badge badge-neutral">INDUSTRIAL & PROCEDURAL</span>
+        </div>
+        <p class="section-desc">
+          The aesthetic identity is procedural, precise, trustworthy, controlled, and low-noise.
+        </p>
+
+        <div class="rule-split">
+          <div class="rule-column good">
+            <div class="rule-column-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              Standard RailOS Archetype (Mandatory)
+            </div>
+            <ul class="rule-list">
+              <li><strong>Industrial:</strong> Resembles real traction and interlocking SCADA consoles.</li>
+              <li><strong>Procedural:</strong> Stepwise workflows with clear approval gates.</li>
+              <li><strong>Precise:</strong> Tabular numerals, exact timestamps, and section chainages.</li>
+              <li><strong>Trustworthy:</strong> Explicit attribution of automated optimizer recommendations.</li>
+              <li><strong>Low-Noise:</strong> Subdued neutral boundaries; reserve high-chroma tones for anomalies.</li>
+            </ul>
+          </div>
+
+          <div class="rule-column bad">
+            <div class="rule-column-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              Prohibited Patterns (Anti-Patterns)
+            </div>
+            <ul class="rule-list">
+              <li><strong>No excessive gradients or neon glows:</strong> Impairs readability under varied display setups.</li>
+              <li><strong>No startup glassmorphism / blurred cards:</strong> Adds rendering overhead with zero operational utility.</li>
+              <li><strong>No playful or cartoon illustrations:</strong> Rail operations involve safety of life and passenger transit.</li>
+              <li><strong>No oversized rounded bubble cards:</strong> Wastes critical screen real-estate.</li>
+              <li><strong>No gratuitous decorative motion:</strong> Animations must be under 150ms and convey state transition only.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Color System -->
+      <section id="colors" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 03</span>
+            Color System & Tokens
+          </h2>
+          <span class="badge badge-neutral">CLICK TOKEN TO COPY</span>
+        </div>
+        <p class="section-desc">
+          Strict semantic tokens. Never use arbitrary hardcoded hex codes. All colors are calibrated for WCAG AA contrast against dark backgrounds.
+        </p>
+
+        <!-- Foundation Tokens -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Foundation Surfaces & Borders</h3>
+        <div class="grid-4" style="margin-bottom: var(--space-20);">
+          <div class="color-swatch-card" onclick="copyToken('--bg-canvas', '#090c10')">
+            <div class="swatch-preview" style="background: #090c10;"></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--bg-canvas</span>
+              <span class="swatch-hex">#090c10</span>
+              <span class="swatch-role">Primary viewport canvas background</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--bg-surface', '#0d1117')">
+            <div class="swatch-preview" style="background: #0d1117;"></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--bg-surface</span>
+              <span class="swatch-hex">#0d1117</span>
+              <span class="swatch-role">Containers, toolbars, tables</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--bg-elevated', '#161b22')">
+            <div class="swatch-preview" style="background: #161b22;"></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--bg-elevated</span>
+              <span class="swatch-hex">#161b22</span>
+              <span class="swatch-role">Cards, active rows, hover states</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--border-default', '#263040')">
+            <div class="swatch-preview" style="background: #263040;"></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--border-default</span>
+              <span class="swatch-hex">#263040</span>
+              <span class="swatch-role">Default pane separation border</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Semantic Status Tokens -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Semantic Operational Status</h3>
+        <div class="grid-6" style="margin-bottom: var(--space-20);">
+          <div class="color-swatch-card" onclick="copyToken('--status-neutral', '#64748b')">
+            <div class="swatch-preview" style="background: #64748b;"><span class="badge badge-neutral">NEUTRAL</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-neutral</span>
+              <span class="swatch-hex">#64748b</span>
+              <span class="swatch-role">Pending / Inactive</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--status-info', '#38bdf8')">
+            <div class="swatch-preview" style="background: #38bdf8;"><span class="badge badge-info" style="color:#0369a1;background:#fff;">INFO</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-info</span>
+              <span class="swatch-hex">#38bdf8</span>
+              <span class="swatch-role">Scheduled / Review</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--status-success', '#22c55e')">
+            <div class="swatch-preview" style="background: #22c55e;"><span class="badge badge-success" style="color:#14532d;background:#fff;">SUCCESS</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-success</span>
+              <span class="swatch-hex">#22c55e</span>
+              <span class="swatch-role">Approved / Completed</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--status-warning', '#f59e0b')">
+            <div class="swatch-preview" style="background: #f59e0b;"><span class="badge badge-warning" style="color:#78350f;background:#fff;">WARNING</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-warning</span>
+              <span class="swatch-hex">#f59e0b</span>
+              <span class="swatch-role">At Risk / Delay</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--status-critical', '#ef4444')">
+            <div class="swatch-preview" style="background: #ef4444;"><span class="badge badge-critical" style="color:#7f1d1d;background:#fff;">CRITICAL</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-critical</span>
+              <span class="swatch-hex">#ef4444</span>
+              <span class="swatch-role">Emergency / Severe</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--status-paused', '#a855f7')">
+            <div class="swatch-preview" style="background: #a855f7;"><span class="badge badge-paused" style="color:#581c87;background:#fff;">PAUSED</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--status-paused</span>
+              <span class="swatch-hex">#a855f7</span>
+              <span class="swatch-role">Deferred / Held</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Department Identities -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Indian Railways Departmental Identities</h3>
+        <div class="grid-3" style="margin-bottom: var(--space-20);">
+          <div class="color-swatch-card" onclick="copyToken('--dept-engineering', '#3b82f6')">
+            <div class="swatch-preview" style="background: #3b82f6;"><span class="badge badge-dept-eng" style="background:#fff; color:#1d4ed8;">CIVIL ENG</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--dept-engineering</span>
+              <span class="swatch-hex">#3b82f6 (Steel Blue)</span>
+              <span class="swatch-role">Permanent Way (P-Way), Track, Bridges, Works</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--dept-snt', '#ec4899')">
+            <div class="swatch-preview" style="background: #ec4899;"><span class="badge badge-dept-snt" style="background:#fff; color:#be185d;">S&T DEPT</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--dept-snt</span>
+              <span class="swatch-hex">#ec4899 (Signal Magenta)</span>
+              <span class="swatch-role">Signals, Points, Interlocking, Telecom, Track Circuits</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--dept-traction', '#eab308')">
+            <div class="swatch-preview" style="background: #eab308;"><span class="badge badge-dept-traction" style="background:#fff; color:#854d0e;">TRACTION</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--dept-traction</span>
+              <span class="swatch-hex">#eab308 (Electric Gold)</span>
+              <span class="swatch-role">Overhead Equipment (OHE), Substations, Power Isolation</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Objective Modes -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Block Optimization Modes</h3>
+        <div class="grid-3">
+          <div class="color-swatch-card" onclick="copyToken('--mode-safety', '#10b981')">
+            <div class="swatch-preview" style="background: #10b981;"><span class="badge badge-obj-safety" style="background:#fff; color:#047857;">SAFETY FIRST</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--mode-safety</span>
+              <span class="swatch-hex">#10b981</span>
+              <span class="swatch-role">Prioritize urgent safety defects regardless of train delay</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--mode-balanced', '#6366f1')">
+            <div class="swatch-preview" style="background: #6366f1;"><span class="badge badge-obj-balanced" style="background:#fff; color:#4338ca;">BALANCED</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--mode-balanced</span>
+              <span class="swatch-hex">#6366f1</span>
+              <span class="swatch-role">Pareto-optimal trade-off between maintenance yield & punctuality</span>
+            </div>
+          </div>
+
+          <div class="color-swatch-card" onclick="copyToken('--mode-operations', '#f97316')">
+            <div class="swatch-preview" style="background: #f97316;"><span class="badge badge-obj-ops" style="background:#fff; color:#c2410c;">OPERATIONS FIRST</span></div>
+            <div class="swatch-info">
+              <span class="swatch-token">--mode-operations</span>
+              <span class="swatch-hex">#f97316</span>
+              <span class="swatch-role">Minimize passenger train schedule disturbance</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. Typography -->
+      <section id="typography" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 04</span>
+            Typography & Numeric Monospace Scale
+          </h2>
+          <span class="badge badge-neutral">TABULAR NUMERALS</span>
+        </div>
+        <p class="section-desc">
+          High-readability sans-serif font for control surfaces paired with monospace tabular numerals for timings, train numbers, block IDs, and KPIs.
+        </p>
+
+        <div class="control-card">
+          <div class="type-row">
+            <span class="type-name" style="font-size:26px; line-height:1.2;">Display Large</span>
+            <span class="type-meta">26px / 700 bold</span>
+            <span class="badge badge-neutral">Hero Metric</span>
+            <span style="font-size:26px; font-weight:700;">88.4% Section Velocity</span>
+          </div>
+
+          <div class="type-row">
+            <span class="type-name" style="font-size:20px; line-height:1.25;">Display Medium</span>
+            <span class="type-meta">20px / 700 bold</span>
+            <span class="badge badge-neutral">Card Value</span>
+            <span style="font-size:20px; font-weight:700;">47 Active Corridor Blocks</span>
+          </div>
+
+          <div class="type-row">
+            <span class="type-name" style="font-size:16px;">Heading 1</span>
+            <span class="type-meta">16px / 700 bold</span>
+            <span class="badge badge-neutral">Screen Header</span>
+            <span style="font-size:16px; font-weight:700;">Delhi &mdash; Ghaziabad &mdash; Kanpur Corridor</span>
+          </div>
+
+          <div class="type-row">
+            <span class="type-name" style="font-size:14px;">Heading 2</span>
+            <span class="type-meta">14px / 600 semibold</span>
+            <span class="badge badge-neutral">Panel Header</span>
+            <span style="font-size:14px; font-weight:600;">Maintenance Window Availability</span>
+          </div>
+
+          <div class="type-row">
+            <span class="type-name" style="font-size:13px;">Body Primary</span>
+            <span class="type-meta">13px / 400 normal</span>
+            <span class="badge badge-neutral">Table Cells</span>
+            <span style="font-size:13px;">Ultrasonic Rail Flaw detected at KM 104/12 Down Line</span>
+          </div>
+
+          <div class="type-row">
+            <span class="type-name" style="font-size:11px;">Caption / Mono Numeric</span>
+            <span class="type-meta">11px / 500 mono</span>
+            <span class="badge badge-info">Mono Tabular</span>
+            <span class="mono-value" style="color:var(--status-info);">TR-12002 [NDLS-CNB] &bull; 14:20 &bull; BLK-2026-0908</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Spacing System -->
+      <section id="spacing" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 05</span>
+            Spacing & Layout Rhythm
+          </h2>
+          <span class="badge badge-neutral">STRICT SCALE</span>
+        </div>
+        <p class="section-desc">
+          Strict spacing scale. Avoid arbitrary padding values. Compact tables use small rhythm; planning panels use medium rhythm.
+        </p>
+
+        <div class="control-card">
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-2 (2px)</span>
+              <div style="width:2px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Chip borders, badge internal gaps</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-4 (4px)</span>
+              <div style="width:4px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Dense row inner margins, status dots</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-8 (8px)</span>
+              <div style="width:8px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Button paddings, metric rows, table cells</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-12 (12px)</span>
+              <div style="width:12px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Card inner padding, drawer header gaps</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-16 (16px)</span>
+              <div style="width:16px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Standard panel margins, grid column gutters</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <span style="width:110px; font-family:var(--font-mono); font-size:11px;">--space-24 (24px)</span>
+              <div style="width:24px; height:20px; background:var(--status-info);"></div>
+              <span style="color:var(--text-muted); font-size:11px;">Workspace page gutters, large card separation</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 & 7. Radius & Elevation -->
+      <section id="borders" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 06 & 07</span>
+            Borders, Radii & Elevation Levels
+          </h2>
+          <span class="badge badge-neutral">NO SOFT BUBBLES</span>
+        </div>
+        <div class="grid-3">
+          <div class="control-card">
+            <div class="control-card-title">Radius Rules</div>
+            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">RailOS avoids bubbly or exaggerated rounding. Tight industrial corners maintain architectural discipline.</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="background:var(--bg-elevated); border:1px solid var(--border-default); border-radius:var(--radius-sm); padding:6px 10px; font-size:11px;">
+                Small (2px): Inputs & Badges
+              </div>
+              <div style="background:var(--bg-elevated); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:6px 10px; font-size:11px;">
+                Medium (4px): Cards & Panels
+              </div>
+            </div>
+          </div>
+
+          <div class="control-card">
+            <div class="control-card-title">Border Hierarchy</div>
+            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">Panels are separated with borders and crisp contrast rather than heavy blurred drop-shadows.</p>
+            <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+              <div style="border:1px solid var(--border-subtle); padding:4px 8px; color:var(--text-muted);">--border-subtle (Inner grid lines)</div>
+              <div style="border:1px solid var(--border-default); padding:4px 8px; color:var(--text-secondary);">--border-default (Pane boundaries)</div>
+              <div style="border:1px solid var(--border-strong); padding:4px 8px; color:var(--text-primary);">--border-strong (Active card focus)</div>
+            </div>
+          </div>
+
+          <div class="control-card">
+            <div class="control-card-title">Elevation Tiers</div>
+            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">Used sparingly to float critical drawers, flyouts, and modal confirmations above data tables.</p>
+            <div style="display:flex; flex-direction:column; gap:6px; font-size:11px;">
+              <div style="background:var(--bg-surface); padding:4px 8px; border:1px solid var(--border-default);">Base (Flat Data Canvas)</div>
+              <div style="background:var(--bg-elevated); padding:4px 8px; box-shadow:var(--shadow-raised); border:1px solid var(--border-default);">Raised (Hover Tooltip / Menu)</div>
+              <div style="background:var(--bg-panel); padding:4px 8px; box-shadow:var(--shadow-modal); border:1px solid var(--status-info);">Modal / Drawer Overlay</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. Iconography -->
+      <section id="iconography" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 08</span>
+            Utilitarian Iconography
+          </h2>
+          <span class="badge badge-neutral">ALWAYS PAIRED WITH LABELS</span>
+        </div>
+        <p class="section-desc">
+          Icons must be utilitarian, crisp, and never used alone for critical operational states. They always pair with text badges or tooltips.
+        </p>
+
+        <div class="grid-6">
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--status-critical);"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Critical Alert</span>
+          </div>
+
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--status-info);"><rect x="4" y="3" width="16" height="16" rx="2"></rect><path d="M4 11h16"></path><path d="M12 3v8"></path><path d="m8 19-2 3"></path><path d="m16 19 2 3"></path></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Train Movement</span>
+          </div>
+
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--dept-engineering);"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Track / P-Way</span>
+          </div>
+
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--dept-snt);"><path d="M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7z"></path><circle cx="12" cy="9" r="2.5"></circle></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Signal / Point</span>
+          </div>
+
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--dept-traction);"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Traction / OHE</span>
+          </div>
+
+          <div class="principle-box" style="align-items:center; text-align:center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--status-success);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            <span style="font-weight:600; font-size:12px; margin-top:4px;">Approval Granted</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9. Status Semantics Matrix -->
+      <section id="status-semantics" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 09</span>
+            Status Semantics Matrix
+          </h2>
+          <span class="badge badge-info">CANONICAL LIFECYCLE</span>
+        </div>
+        <p class="section-desc">
+          Unified state mapping across Task lifecycle, Block window lifecycle, Severity levels, and Safety Risk Bands.
+        </p>
+
+        <div class="grid-2">
+          <!-- Task Status -->
+          <div class="control-card">
+            <div class="control-card-title">1. Task Status Lifecycle (9 Canonical States)</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+              <span class="badge badge-neutral"><span class="badge-dot"></span>pending</span>
+              <span class="badge badge-info"><span class="badge-dot"></span>candidate</span>
+              <span class="badge badge-info"><span class="badge-dot"></span>scheduled</span>
+              <span class="badge badge-dept-eng"><span class="badge-dot"></span>assigned</span>
+              <span class="badge badge-success"><span class="badge-dot"></span>active</span>
+              <span class="badge badge-warning"><span class="badge-dot"></span>delayed</span>
+              <span class="badge badge-success"><span class="badge-dot"></span>completed</span>
+              <span class="badge badge-paused"><span class="badge-dot"></span>deferred</span>
+              <span class="badge badge-critical"><span class="badge-dot"></span>cancelled</span>
+            </div>
+          </div>
+
+          <!-- Block Status -->
+          <div class="control-card">
+            <div class="control-card-title">2. Block Status Lifecycle (9 Canonical States)</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+              <span class="badge badge-neutral"><span class="badge-dot"></span>proposed</span>
+              <span class="badge badge-info"><span class="badge-dot"></span>under_review</span>
+              <span class="badge badge-success"><span class="badge-dot"></span>approved</span>
+              <span class="badge badge-success"><span class="badge-dot"></span>active</span>
+              <span class="badge badge-warning"><span class="badge-dot"></span>at_risk</span>
+              <span class="badge badge-warning"><span class="badge-dot"></span>delayed</span>
+              <span class="badge badge-neutral"><span class="badge-dot"></span>completed</span>
+              <span class="badge badge-critical"><span class="badge-dot"></span>cancelled</span>
+              <span class="badge badge-paused"><span class="badge-dot"></span>superseded</span>
+            </div>
+          </div>
+
+          <!-- Severity Hierarchy -->
+          <div class="control-card">
+            <div class="control-card-title">3. Defect & Maintenance Severity</div>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="badge badge-neutral">low</span>
+                <span style="color:var(--text-secondary); font-size:11px;">Routine preventive check; non-blocking</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="badge badge-info">medium</span>
+                <span style="color:var(--text-secondary); font-size:11px;">Standard maintenance window required within 7 days</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="badge badge-warning">high</span>
+                <span style="color:var(--text-secondary); font-size:11px;">Requires priority window assignment within 48 hours</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="badge badge-critical">critical</span>
+                <span style="color:var(--text-secondary); font-size:11px;">Speed restriction active; mandatory immediate block</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Risk Bands -->
+          <div class="control-card">
+            <div class="control-card-title">4. Corridor Risk Bands (5 Levels)</div>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span class="risk-bar"><span class="risk-segment active-low"></span><span class="risk-segment"></span><span class="risk-segment"></span><span class="risk-segment"></span><span class="risk-segment"></span></span>
+                  <strong style="color:var(--risk-low); font-size:11px;">LOW</strong>
+                </span>
+                <span style="color:var(--text-secondary); font-size:11px;">Nominal operations; buffer available</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span class="risk-bar"><span class="risk-segment active-guarded"></span><span class="risk-segment active-guarded"></span><span class="risk-segment"></span><span class="risk-segment"></span><span class="risk-segment"></span></span>
+                  <strong style="color:var(--risk-guarded); font-size:11px;">GUARDED</strong>
+                </span>
+                <span style="color:var(--text-secondary); font-size:11px;">Slight maintenance backlog</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span class="risk-bar"><span class="risk-segment active-elevated"></span><span class="risk-segment active-elevated"></span><span class="risk-segment active-elevated"></span><span class="risk-segment"></span><span class="risk-segment"></span></span>
+                  <strong style="color:var(--risk-elevated); font-size:11px;">ELEVATED</strong>
+                </span>
+                <span style="color:var(--text-secondary); font-size:11px;">Overdue inspections on high-density freight line</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span class="risk-bar"><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment"></span></span>
+                  <strong style="color:var(--risk-high); font-size:11px;">HIGH</strong>
+                </span>
+                <span style="color:var(--text-secondary); font-size:11px;">Defect propagation risk; caution order imposed</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="display:flex; align-items:center; gap:6px;">
+                  <span class="risk-bar"><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span></span>
+                  <strong style="color:var(--risk-severe); font-size:11px;">SEVERE</strong>
+                </span>
+                <span style="color:var(--text-secondary); font-size:11px;">Critical failure imminent; immediate interlocking lock</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 10. Core Components Inventory -->
+      <section id="components" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 10</span>
+            Core Component Inventory
+          </h2>
+          <span class="badge badge-neutral">37 COMPONENTS INVENTORY</span>
+        </div>
+
+        <!-- Metrics Preview -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Metrics & KPI Displays</h3>
+        <div class="grid-4" style="margin-bottom: var(--space-20);">
+          <div class="metric-card">
+            <span class="metric-label">Active Blocks</span>
+            <div class="metric-value-row">
+              <span class="metric-value">12 / 14</span>
+              <span class="delta-pill delta-positive">+2 Granted</span>
+            </div>
+            <span style="font-size:10px; color:var(--text-muted);">Delhi Division &bull; 86% Utilization</span>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Critical Defects</span>
+            <div class="metric-value-row">
+              <span class="metric-value" style="color:var(--status-critical);">03</span>
+              <span class="delta-pill delta-negative">URGENT</span>
+            </div>
+            <span style="font-size:10px; color:var(--text-muted);">2 Track &bull; 1 S&T Point Defect</span>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Maintenance Yield</span>
+            <div class="metric-value-row">
+              <span class="metric-value" style="color:var(--status-success);">94.2%</span>
+              <span class="delta-pill delta-positive">+5.1% YoY</span>
+            </div>
+            <span style="font-size:10px; color:var(--text-muted);">Bundled works executed on time</span>
+          </div>
+
+          <div class="metric-card">
+            <span class="metric-label">Punctuality Impact</span>
+            <div class="metric-value-row">
+              <span class="metric-value">4.2 min</span>
+              <span class="delta-pill delta-positive">-1.8 min avg</span>
+            </div>
+            <span style="font-size:10px; color:var(--text-muted);">Residual passenger train delay</span>
+          </div>
+        </div>
+
+        <!-- Workflow & Approvals Preview -->
+        <h3 style="font-size:13px; font-weight:700; color:var(--text-secondary); margin-bottom:var(--space-8); text-transform:uppercase;">Workflow & Scenario Controls</h3>
+        <div class="control-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span style="font-size:12px; font-weight:600; color:var(--text-primary);">Planning Horizon:</span>
+              <select style="background:var(--bg-elevated); color:var(--text-primary); border:1px solid var(--border-default); padding:4px 8px; border-radius:var(--radius-sm); font-size:12px;">
+                <option>Today (Next 24h)</option>
+                <option>Rolling 7-Day Window</option>
+                <option>Monthly Mega-Block Window</option>
+              </select>
+
+              <span style="font-size:12px; font-weight:600; color:var(--text-primary); margin-left:12px;">Optimization Mode:</span>
+              <div style="display:flex; gap:4px;">
+                <button class="btn btn-secondary btn-sm" style="border-color:var(--mode-safety); color:var(--mode-safety);">Safety First</button>
+                <button class="btn btn-secondary btn-sm" style="background:#1d283a; border-color:var(--mode-balanced); color:var(--mode-balanced);">Balanced</button>
+                <button class="btn btn-secondary btn-sm">Ops First</button>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm" onclick="showToast('Simulation running against 84 scheduled trains...')">Run Simulation</button>
+              <button class="btn btn-primary btn-sm" onclick="showToast('Generating multi-department bundle plan...')">Generate Plan</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 11. Interactive Dense Table Spec -->
+      <section id="table-rules" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 11</span>
+            Interactive Operational Table Spec
+          </h2>
+          <span class="badge badge-neutral">DENSITY WITHOUT CHAOS</span>
+        </div>
+        <p class="section-desc">
+          Demonstration of table rules: compact row height (32px), sticky header, strong row selection, department identity badges, and drawer inspection trigger.
+        </p>
+
+        <div class="op-table-container">
+          <div class="op-table-toolbar">
+            <div class="filter-chips-group">
+              <span class="filter-chip active" onclick="filterTable('all', event)">All Departments (5)</span>
+              <span class="filter-chip" onclick="filterTable('eng', event)">Civil / Track (2)</span>
+              <span class="filter-chip" onclick="filterTable('snt', event)">S&T (2)</span>
+              <span class="filter-chip" onclick="filterTable('traction', event)">Traction OHE (1)</span>
+              <span class="filter-chip" onclick="filterTable('critical', event)">Critical Severity Only</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button class="btn btn-secondary btn-sm" onclick="showToast('Exporting filtered worklist to CSV format...')">Export CSV</button>
+              <button class="btn btn-secondary btn-sm" onclick="showToast('Configuring visible table columns...')">Columns (9)</button>
+            </div>
+          </div>
+
+          <table class="op-data-table" id="maintenanceTable">
+            <thead>
+              <tr>
+                <th>Task ID</th>
+                <th>Department</th>
+                <th>Asset / Section</th>
+                <th>Issue Description</th>
+                <th>Severity</th>
+                <th>Risk Band</th>
+                <th>Req. Window</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-dept="eng" data-severity="critical" onclick="selectTableRow(this, 'TSK-1092', 'Civil Eng', 'KM 104/12 Down Line (Ghaziabad-Aligarh)', 'Ultrasonic Rail Flaw (IMR Defect)', 'critical', 'severe', '180 min', 'active')">
+                <td class="mono-value" style="font-weight:600; color:var(--status-info);">TSK-1092</td>
+                <td><span class="badge badge-dept-eng">Civil Eng</span></td>
+                <td>KM 104/12 Down Line (GZB-ALJN)</td>
+                <td>Ultrasonic Rail Flaw (IMR Defect)</td>
+                <td><span class="badge badge-critical">critical</span></td>
+                <td>
+                  <span style="display:flex; align-items:center; gap:4px;">
+                    <span class="risk-bar"><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span></span>
+                    <span class="mono-value" style="font-size:11px; color:var(--risk-severe);">SEVERE</span>
+                  </span>
+                </td>
+                <td class="mono-value">180 min</td>
+                <td><span class="badge badge-success"><span class="badge-dot"></span>active</span></td>
+                <td><button class="btn btn-secondary btn-sm">Inspect</button></td>
+              </tr>
+
+              <tr data-dept="snt" data-severity="high" onclick="selectTableRow(this, 'TSK-1093', 'S&T Dept', 'Point 114B (Ghaziabad Yard)', 'Point Machine Backlash & Play', 'high', 'high', '90 min', 'scheduled')">
+                <td class="mono-value" style="font-weight:600; color:var(--status-info);">TSK-1093</td>
+                <td><span class="badge badge-dept-snt">S&T Dept</span></td>
+                <td>Point 114B (Ghaziabad Yard)</td>
+                <td>Point Machine Backlash & Play</td>
+                <td><span class="badge badge-warning">high</span></td>
+                <td>
+                  <span style="display:flex; align-items:center; gap:4px;">
+                    <span class="risk-bar"><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment"></span></span>
+                    <span class="mono-value" style="font-size:11px; color:var(--risk-high);">HIGH</span>
+                  </span>
+                </td>
+                <td class="mono-value">90 min</td>
+                <td><span class="badge badge-info"><span class="badge-dot"></span>scheduled</span></td>
+                <td><button class="btn btn-secondary btn-sm">Inspect</button></td>
+              </tr>
+
+              <tr data-dept="traction" data-severity="medium" onclick="selectTableRow(this, 'TSK-1094', 'Traction', 'OHE Mast 42/18 (Aligarh Sec)', 'Cantilever Insulator Cleaning', 'medium', 'elevated', '120 min', 'candidate')">
+                <td class="mono-value" style="font-weight:600; color:var(--status-info);">TSK-1094</td>
+                <td><span class="badge badge-dept-traction">Traction</span></td>
+                <td>OHE Mast 42/18 (Aligarh Sec)</td>
+                <td>Cantilever Insulator Flashover Cleaning</td>
+                <td><span class="badge badge-info">medium</span></td>
+                <td>
+                  <span style="display:flex; align-items:center; gap:4px;">
+                    <span class="risk-bar"><span class="risk-segment active-elevated"></span><span class="risk-segment active-elevated"></span><span class="risk-segment active-elevated"></span><span class="risk-segment"></span><span class="risk-segment"></span></span>
+                    <span class="mono-value" style="font-size:11px; color:var(--risk-elevated);">ELEVATED</span>
+                  </span>
+                </td>
+                <td class="mono-value">120 min</td>
+                <td><span class="badge badge-info"><span class="badge-dot"></span>candidate</span></td>
+                <td><button class="btn btn-secondary btn-sm">Inspect</button></td>
+              </tr>
+
+              <tr data-dept="eng" data-severity="high" onclick="selectTableRow(this, 'TSK-1095', 'Civil Eng', 'Bridge 44 (Tundla Section)', 'Bearing Seat Inspection & Grease', 'high', 'high', '150 min', 'proposed')">
+                <td class="mono-value" style="font-weight:600; color:var(--status-info);">TSK-1095</td>
+                <td><span class="badge badge-dept-eng">Civil Eng</span></td>
+                <td>Bridge 44 (Tundla Section)</td>
+                <td>Bearing Seat Inspection & Grease</td>
+                <td><span class="badge badge-warning">high</span></td>
+                <td>
+                  <span style="display:flex; align-items:center; gap:4px;">
+                    <span class="risk-bar"><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment active-high"></span><span class="risk-segment"></span></span>
+                    <span class="mono-value" style="font-size:11px; color:var(--risk-high);">HIGH</span>
+                  </span>
+                </td>
+                <td class="mono-value">150 min</td>
+                <td><span class="badge badge-neutral"><span class="badge-dot"></span>proposed</span></td>
+                <td><button class="btn btn-secondary btn-sm">Inspect</button></td>
+              </tr>
+
+              <tr data-dept="snt" data-severity="critical" onclick="selectTableRow(this, 'TSK-1096', 'S&T Dept', 'Track Circuit TC-441 (Aligarh)', 'Axle Counter Intermittent Reset', 'critical', 'severe', '60 min', 'scheduled')">
+                <td class="mono-value" style="font-weight:600; color:var(--status-info);">TSK-1096</td>
+                <td><span class="badge badge-dept-snt">S&T Dept</span></td>
+                <td>Track Circuit TC-441 (Aligarh)</td>
+                <td>Axle Counter Intermittent Reset</td>
+                <td><span class="badge badge-critical">critical</span></td>
+                <td>
+                  <span style="display:flex; align-items:center; gap:4px;">
+                    <span class="risk-bar"><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span><span class="risk-segment active-severe"></span></span>
+                    <span class="mono-value" style="font-size:11px; color:var(--risk-severe);">SEVERE</span>
+                  </span>
+                </td>
+                <td class="mono-value">60 min</td>
+                <td><span class="badge badge-critical"><span class="badge-dot"></span>scheduled</span></td>
+                <td><button class="btn btn-secondary btn-sm">Inspect</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 12. Interactive Gantt Timeline -->
+      <section id="timeline-rules" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 12</span>
+            Operational Timeline & Block Gantt
+          </h2>
+          <span class="badge badge-info">SCHEDULING PRIMITIVE</span>
+        </div>
+        <p class="section-desc">
+          Timeline visually differentiates passenger trains, freight trains, available shadow windows, and multi-department block assignments.
+        </p>
+
+        <div class="gantt-panel">
+          <div class="gantt-header">
+            <div class="gantt-axis-label">OPERATIONAL TRACK</div>
+            <div class="gantt-time-scale">
+              <div class="gantt-hour-col">12:00</div>
+              <div class="gantt-hour-col">13:00</div>
+              <div class="gantt-hour-col">14:00</div>
+              <div class="gantt-hour-col">15:00</div>
+              <div class="gantt-hour-col">16:00</div>
+              <div class="gantt-hour-col">17:00</div>
+              <div class="gantt-hour-col">18:00</div>
+            </div>
+          </div>
+
+          <!-- Passenger Row -->
+          <div class="gantt-row">
+            <div class="gantt-row-title">
+              <span>Passenger Trains</span>
+              <span class="badge badge-neutral" style="font-size:9px;">UP LINE</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div class="train-path-bar" style="left: 4%; width: 22%;" title="12002 Vande Bharat Express">
+                12002 Vande Bharat (12:15 - 13:30)
+              </div>
+              <div class="train-path-bar" style="left: 62%; width: 25%;" title="12424 Rajdhani Express">
+                12424 Rajdhani Exp (15:45 - 17:15)
+              </div>
+            </div>
+          </div>
+
+          <!-- Goods Train Row -->
+          <div class="gantt-row">
+            <div class="gantt-row-title">
+              <span>Goods Trains</span>
+              <span class="badge badge-neutral" style="font-size:9px;">FREIGHT</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div class="train-path-bar train-path-freight" style="left: 20%; width: 18%;" title="BOXN Coal Rake 4182">
+                BOXN Coal 4182 (13:10 - 14:15)
+              </div>
+              <div class="train-path-bar train-path-freight" style="left: 78%; width: 19%;" title="Container Rake 9012">
+                Container BCN 9012
+              </div>
+            </div>
+          </div>
+
+          <!-- Proposed Shadow Block Row -->
+          <div class="gantt-row" style="background: rgba(16, 185, 129, 0.04);">
+            <div class="gantt-row-title" style="color:var(--status-success);">
+              <span>Proposed Block Window</span>
+              <span class="badge badge-success" style="font-size:9px;">SHADOW</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div class="block-bar" style="left: 36%; width: 28%;" onclick="openBlockDetail('BLK-GZB-0908')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span>BLK-GZB-0908: Bundled 3-Dept Block (14:10 - 15:50)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Department Sub-tasks within block -->
+          <div class="gantt-row">
+            <div class="gantt-row-title">
+              <span style="color:var(--dept-engineering);">Civil Eng Track</span>
+              <span class="badge badge-dept-eng" style="font-size:9px;">TSK-1092</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div style="position:absolute; left:36%; width:20%; height:16px; background:var(--dept-engineering); opacity:0.85; border-radius:2px; font-size:10px; padding:0 6px; color:#fff; display:flex; align-items:center;">
+                Rail Renewal & Tamp (90m)
+              </div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-title">
+              <span style="color:var(--dept-snt);">S&T Department</span>
+              <span class="badge badge-dept-snt" style="font-size:9px;">TSK-1093</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div style="position:absolute; left:42%; width:15%; height:16px; background:var(--dept-snt); opacity:0.85; border-radius:2px; font-size:10px; padding:0 6px; color:#fff; display:flex; align-items:center;">
+                Point Machine Overhaul (60m)
+              </div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-title">
+              <span style="color:var(--dept-traction);">Traction (OHE)</span>
+              <span class="badge badge-dept-traction" style="font-size:9px;">TSK-1094</span>
+            </div>
+            <div class="gantt-track-lane">
+              <div style="position:absolute; left:38%; width:24%; height:16px; background:var(--dept-traction); opacity:0.85; border-radius:2px; font-size:10px; padding:0 6px; color:#000; font-weight:600; display:flex; align-items:center;">
+                OHE Power Isolation & Inspection (100m)
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 13. Schematic Network Corridor Map -->
+      <section id="map-rules" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 13</span>
+            Schematic Network Corridor Map
+          </h2>
+          <span class="badge badge-neutral">SCHEMATIC FIRST, GIS SECOND</span>
+        </div>
+        <p class="section-desc">
+          Corridor representation (Delhi &mdash; Ghaziabad &mdash; Aligarh &mdash; Tundla). Click nodes to inspect section telemetry, pending tasks, and caution orders.
+        </p>
+
+        <div class="schematic-corridor-wrap">
+          <div class="corridor-line">
+            <div class="corridor-track-bg"></div>
+            <div class="corridor-track-progress"></div>
+
+            <!-- Delhi Node -->
+            <div class="station-node active" onclick="inspectNode('NDLS', 'New Delhi Junction', '0.00 KM', 'Nominal', '3 Tasks', 'No Blocks', event)">
+              <span>NDLS</span>
+              <span class="station-label">Delhi Jn</span>
+            </div>
+
+            <!-- Ghaziabad Node -->
+            <div class="station-node warning" onclick="inspectNode('GZB', 'Ghaziabad Junction', '25.6 KM', 'Caution Order (30 km/h)', '12 Tasks (2 Critical)', 'BLK-GZB-0908 Scheduled', event)">
+              <span>GZB</span>
+              <span class="station-label">Ghaziabad &bull; ⚠️</span>
+            </div>
+
+            <!-- Aligarh Node -->
+            <div class="station-node" onclick="inspectNode('ALJN', 'Aligarh Junction', '131.0 KM', 'Track Flaw Warning', '5 Tasks', 'Window 14:10', event)">
+              <span>ALJN</span>
+              <span class="station-label">Aligarh Jn</span>
+            </div>
+
+            <!-- Tundla Node -->
+            <div class="station-node" onclick="inspectNode('TDL', 'Tundla Junction', '204.5 KM', 'Clear Operations', '2 Tasks', 'No Active Blocks', event)">
+              <span>TDL</span>
+              <span class="station-label">Tundla Jn</span>
+            </div>
+          </div>
+
+          <!-- Section Telemetry Box -->
+          <div class="control-card" id="nodeInspectorBox" style="margin-top:40px; background:var(--bg-elevated);">
+            <div class="control-card-header">
+              <div class="control-card-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="12 8 8 12 12 16 12 8"></polygon></svg>
+                <span id="inspTitle">Ghaziabad Junction (GZB) &mdash; Telemetry</span>
+              </div>
+              <span class="badge badge-warning" id="inspStatus">Caution Order Active</span>
+            </div>
+            <div class="grid-4">
+              <div>
+                <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Chainage</span>
+                <div class="mono-value" id="inspChainage" style="font-size:13px; font-weight:600;">KM 25.60</div>
+              </div>
+              <div>
+                <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Pending Defects</span>
+                <div class="mono-value" id="inspDefects" style="font-size:13px; font-weight:600; color:var(--status-critical);">12 Tasks (2 IMR)</div>
+              </div>
+              <div>
+                <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Next Approved Window</span>
+                <div class="mono-value" id="inspWindow" style="font-size:13px; font-weight:600; color:var(--status-success);">14:10 - 15:50 (100 min)</div>
+              </div>
+              <div>
+                <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Speed Restriction</span>
+                <div class="mono-value" style="font-size:13px; font-weight:600; color:var(--status-warning);">30 KM/H on Down Loop</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 14. Emergency Replan & Diff Card -->
+      <section id="replan-workflow" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 14</span>
+            Emergency Replanning Diff Visualizer
+          </h2>
+          <span class="badge badge-critical">STATE MUTATION</span>
+        </div>
+        <p class="section-desc">
+          When an emergency track flaw occurs, RailOS computes a replan. The UI clearly visualizes the transition: OLD PLAN &rarr; Impact Propagation &rarr; NEW PLAN.
+        </p>
+
+        <div class="control-card">
+          <div class="grid-2">
+            <!-- Old Schedule -->
+            <div style="border-right: 1px solid var(--border-subtle); padding-right:16px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <strong style="color:var(--text-muted); font-size:12px;">BASELINE PLAN v2.4</strong>
+                <span class="badge badge-neutral">PRE-DEFECT</span>
+              </div>
+              <div style="background:var(--bg-surface); padding:8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm); margin-bottom:8px;">
+                <div style="font-size:11px; color:var(--text-muted);">Block BLK-102 &bull; Routine OHE Check</div>
+                <div class="mono-value" style="font-size:12px;">15:00 - 16:30 &bull; Section GZB-ALJN</div>
+              </div>
+              <div style="background:var(--bg-surface); padding:8px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                <div style="font-size:11px; color:var(--text-muted);">Freight Train #9012</div>
+                <div class="mono-value" style="font-size:12px;">Passage on Down Line: 14:45</div>
+              </div>
+            </div>
+
+            <!-- Recomputed Plan -->
+            <div style="padding-left:16px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <strong style="color:var(--status-success); font-size:12px;">RECOMMENDED REPLAN v2.5 (OPTIMIZED)</strong>
+                <span class="badge badge-success">SOLVER CONVERGED</span>
+              </div>
+              <div style="background:rgba(239, 68, 68, 0.1); border:1px solid var(--status-critical); padding:8px; border-radius:var(--radius-sm); margin-bottom:8px;">
+                <div style="font-size:11px; color:#fca5a5;">⚡ Emergency Rail Repair Inserted</div>
+                <div class="mono-value" style="font-size:12px; color:#fff;">14:15 - 15:45 &bull; KM 104/12 Down Line</div>
+              </div>
+              <div style="background:rgba(59, 130, 246, 0.1); border:1px solid var(--status-info); padding:8px; border-radius:var(--radius-sm);">
+                <div style="font-size:11px; color:#93c5fd;">Freight Train #9012 Looped at Maripat</div>
+                <div class="mono-value" style="font-size:12px; color:#fff;">Loop regulation: +18 min &bull; Zero passenger delay</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:12px; color:var(--text-secondary);">Optimizer Impact: 1 emergency defect resolved, 1 freight delayed 18m, 0 passenger impacts.</span>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-secondary btn-sm">Reject Replan</button>
+              <button class="btn btn-primary btn-sm" style="background:var(--status-success); border-color:var(--status-success);" onclick="showToast('Approved Replan v2.5 dispatched to Section Controller')">Approve & Push</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 15. Mobile Field PWA Rules -->
+      <section id="mobile-rules" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 15</span>
+            Mobile Field PWA Specifications
+          </h2>
+          <span class="badge badge-neutral">TOUCH & TACTILE CONSTRAINTS</span>
+        </div>
+        <p class="section-desc">
+          Do not squeeze desktop control-room tables onto mobile. The Field PWA focuses strictly on Today's Assignments, block entry confirmation, delay reporting, and defect logging.
+        </p>
+
+        <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+          <!-- Mobile Mockup -->
+          <div class="mobile-frame">
+            <div class="mobile-header">
+              <span style="font-weight:700; font-size:11px; color:var(--status-info);">RailOS FIELD &bull; P-WAY GZB</span>
+              <span class="mono-value" style="font-size:10px; color:var(--text-muted);">14:02 IST</span>
+            </div>
+
+            <div class="mobile-card" style="border-left: 3px solid var(--status-critical);">
+              <div style="display:flex; justify-content:space-between;">
+                <span class="badge badge-critical" style="font-size:9px;">ASSIGNED URGENT</span>
+                <span class="mono-value" style="font-size:10px; color:var(--text-muted);">14:15 - 15:45</span>
+              </div>
+              <div style="font-weight:600; font-size:12px; margin-top:4px;">Weld Defect Crop & Renew</div>
+              <div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">KM 104/12 &bull; Track Down Main</div>
+              <div style="display:flex; gap:6px; margin-top:10px;">
+                <button class="btn btn-primary btn-sm" style="flex:1; padding:4px 0; font-size:11px;" onclick="showToast('P-Way gang checked into KM 104/12')">START WORK</button>
+                <button class="btn btn-secondary btn-sm" style="padding:4px 8px; font-size:11px;" onclick="showToast('Reported 15 min machine delay')">DELAY</button>
+              </div>
+            </div>
+
+            <div class="mobile-card">
+              <span class="badge badge-info" style="font-size:9px;">NEXT BLOCK</span>
+              <div style="font-weight:600; font-size:12px; margin-top:4px;">Ultrasonic Testing (USFD)</div>
+              <div style="font-size:10px; color:var(--text-muted);">KM 108/00 to 112/00 &bull; Ready</div>
+            </div>
+
+            <button class="btn btn-danger btn-sm" style="width:100%; padding:6px 0;" onclick="showToast('Defect logging form initiated')">+ REPORT SUDDEN TRACK DEFECT</button>
+          </div>
+
+          <!-- Mobile Rules Explanations -->
+          <div style="flex:1; min-width:300px;">
+            <div class="control-card">
+              <div class="control-card-title">Mobile Design Constraints</div>
+              <ul class="rule-list" style="margin-top:8px;">
+                <li><strong>Minimum Touch Targets:</strong> 44px height for field workers wearing heavy gloves.</li>
+                <li><strong>High Sun Contrast:</strong> High luminance contrast for outdoor track ballast environments.</li>
+                <li><strong>Offline Resilience:</strong> Defect logging must cache locally in IndexedDB when track cuts lack cellular reception.</li>
+                <li><strong>Explicit Confirmation:</strong> Starting a block or clearing track protection requires positive multi-step confirmation to prevent safety violations.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 16. Content & Copywriting Rules -->
+      <section id="copy-style" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 16</span>
+            Operational Copywriting Rules
+          </h2>
+          <span class="badge badge-neutral">ZERO MARKETING JARGON</span>
+        </div>
+
+        <div class="rule-split">
+          <div class="rule-column good">
+            <div class="rule-column-title">Approved Operational Terminology</div>
+            <ul class="rule-list">
+              <li>&ldquo;Generate Plan&rdquo; (Explicit action)</li>
+              <li>&ldquo;Review Block Recommendation&rdquo; (Procedure)</li>
+              <li>&ldquo;Defect at KM 104/12 Reported&rdquo; (Exact chainage)</li>
+              <li>&ldquo;Replan Convergence: 4.2s (Optimal)&rdquo; (Engineering status)</li>
+              <li>&ldquo;Grant Track Possession&rdquo; (Railway rulebook terminology)</li>
+            </ul>
+          </div>
+
+          <div class="rule-column bad">
+            <div class="rule-column-title">Prohibited Marketing Copy</div>
+            <ul class="rule-list">
+              <li>&ldquo;Let AI optimize your maintenance workflow seamlessly&rdquo;</li>
+              <li>&ldquo;Next-generation smart intelligent maintenance magic&rdquo;</li>
+              <li>&ldquo;Effortlessly supercharge mission outcomes&rdquo;</li>
+              <li>&ldquo;Delightful rail experiences&rdquo;</li>
+              <li>&ldquo;One-click miraculous dispatch&rdquo;</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 17. Accessibility & Demo Data Labelling -->
+      <section id="accessibility" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 17</span>
+            Accessibility & Synthetic Data Labelling
+          </h2>
+          <span class="badge badge-neutral">INTEGRITY & SAFETY</span>
+        </div>
+
+        <div class="grid-2">
+          <div class="control-card">
+            <div class="control-card-title">Accessibility Imperatives</div>
+            <ul class="rule-list" style="margin-top:8px;">
+              <li><strong>Contrast:</strong> Minimum 4.5:1 ratio on all operational text and badges.</li>
+              <li><strong>No Color Alone:</strong> Red critical alerts must include an exclamation icon and text label.</li>
+              <li><strong>Keyboard Navigation:</strong> Full arrow-key selection in dense tables and Gantt rows.</li>
+              <li><strong>Screen Scaling:</strong> Tested across 1080p control room video walls and 14-inch laptops.</li>
+            </ul>
+          </div>
+
+          <div class="control-card">
+            <div class="control-card-title">Demo & Synthetic Data Marking</div>
+            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">
+              To prevent operational confusion during demonstrations, simulated figures must be watermarked explicitly:
+            </p>
+            <div style="display:flex; gap:8px;">
+              <span class="badge badge-neutral" style="background:#1e293b; border-color:#475569;">[SIMULATED DATA]</span>
+              <span class="badge badge-warning" style="background:rgba(245,158,11,0.2);">[DEMO CORRIDOR]</span>
+              <span class="badge badge-info" style="background:rgba(56,189,248,0.2);">[SYNTHETIC DELAY]</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 18. CSS Tokens & Deliverables Export -->
+      <section id="deliverables" class="doc-section">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span class="section-id">SEC 18</span>
+            Deliverables & Code Token Exporter
+          </h2>
+          <span class="badge badge-info">READY FOR PRODUCTION</span>
+        </div>
+        <p class="section-desc">
+          Exportable CSS custom properties and JSON token contract ready for implementation across `/apps/control-center`, `/apps/field-pwa`, and `/packages/ui`.
+        </p>
+
+        <div class="control-card">
+          <div class="control-card-header">
+            <div class="control-card-title">CSS Variables Excerpt (:root)</div>
+            <button class="btn btn-secondary btn-sm" onclick="copyCssTokens()">Copy Full CSS</button>
+          </div>
+          <div class="code-box" id="cssTokenBox">
+:root {
+  /* Surfaces */
+  --bg-canvas: #090c10;
+  --bg-surface: #0d1117;
+  --bg-elevated: #161b22;
+  --bg-panel: #13171f;
+
+  /* Typography */
+  --text-primary: #f0f6fc;
+  --text-secondary: #9ca3af;
+  --text-muted: #627284;
+
+  /* Semantic Status */
+  --status-neutral: #64748b;
+  --status-info: #38bdf8;
+  --status-success: #22c55e;
+  --status-warning: #f59e0b;
+  --status-critical: #ef4444;
+  --status-paused: #a855f7;
+
+  /* Department Identities */
+  --dept-engineering: #3b82f6; /* Civil / P-Way */
+  --dept-snt: #ec4899;         /* Signal & Telecom */
+  --dept-traction: #eab308;    /* Electrical OHE */
+
+  /* Optimization Objectives */
+  --mode-safety: #10b981;
+  --mode-balanced: #6366f1;
+  --mode-operations: #f97316;
+}
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Side Detail Drawer (Interactive Inspector) -->
+    <aside class="drawer-overlay" id="detailDrawer">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--border-default); padding-bottom:8px;">
+        <span style="font-weight:700; font-size:13px; color:var(--text-primary);" id="drawerTitle">Task Detail Inspector</span>
+        <button class="drawer-close-btn" onclick="toggleDrawer(false)">&times;</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div>
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Task Reference</span>
+          <div class="mono-value" id="drawerTaskId" style="font-size:16px; font-weight:700; color:var(--status-info);">TSK-1092</div>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Department</span>
+            <div id="drawerDept"><span class="badge badge-dept-eng">Civil Eng</span></div>
+          </div>
+          <div>
+            <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Severity</span>
+            <div id="drawerSeverity"><span class="badge badge-critical">critical</span></div>
+          </div>
+        </div>
+
+        <div>
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Track Section / Location</span>
+          <div id="drawerLocation" style="font-weight:600; font-size:12px;">KM 104/12 Down Line (Ghaziabad-Aligarh)</div>
+        </div>
+
+        <div>
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Defect Analysis</span>
+          <p id="drawerDesc" style="font-size:12px; color:var(--text-secondary); margin-top:2px;">
+            Ultrasonic Rail Flaw (IMR - Immediate Removal Required). Internal transverse fatigue crack detected in rail head.
+          </p>
+        </div>
+
+        <div style="background:var(--bg-elevated); padding:10px; border:1px solid var(--border-default); border-radius:var(--radius-sm);">
+          <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Automatic Optimizer Allocation</span>
+          <div style="font-size:11px; margin-top:4px;">Bundled with Block <strong style="color:var(--status-success);">BLK-GZB-0908</strong></div>
+          <div style="font-size:11px; color:var(--text-muted);">Simultaneous with S&T Point 114B overhaul (Zero additional train delay penalty).</div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="showToast('Viewing ultrasonic A-Scan waveform telemetry...')">Sensor Log</button>
+          <button class="btn btn-primary btn-sm" style="flex:1;" onclick="showToast('Task priority updated in solver queue')">Update Priority</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Toast Notification element -->
+  <div id="toast">Token copied to clipboard</div>
+
+  <!-- Interactive Scripts -->
+  <script>
+    // Live Clock Display
+    function updateClock() {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      const secs = String(now.getSeconds()).padStart(2, '0');
+      const el = document.getElementById('clockDisplay');
+      if (el) el.textContent = `${hours}:${mins}:${secs} IST`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Copy Token Helper
+    function copyToken(token, val) {
+      navigator.clipboard.writeText(`${token}: ${val};`).then(() => {
+        showToast(`Copied ${token} (${val})`);
+      });
+    }
+
+    function copyCssTokens() {
+      const code = document.getElementById('cssTokenBox').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        showToast('CSS variables copied to clipboard');
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => {
+        t.classList.remove('show');
+      }, 2000);
+    }
+
+    // Drawer Toggle
+    function toggleDrawer(open) {
+      const d = document.getElementById('detailDrawer');
+      if (open) d.classList.add('open');
+      else d.classList.remove('open');
+    }
+
+    // Table Selection & Inspection
+    function selectTableRow(row, id, dept, loc, desc, sev, risk, win, status) {
+      const rows = document.querySelectorAll('#maintenanceTable tbody tr');
+      rows.forEach(r => r.classList.remove('selected'));
+      row.classList.add('selected');
+
+      document.getElementById('drawerTaskId').textContent = id;
+      const deptClass = dept.toLowerCase().includes('civil') ? 'eng' : (dept.toLowerCase().includes('s&t') ? 'snt' : 'traction');
+      document.getElementById('drawerDept').innerHTML = `<span class="badge badge-dept-${deptClass}">${dept}</span>`;
+      document.getElementById('drawerSeverity').innerHTML = `<span class="badge badge-${sev}">${sev}</span>`;
+      document.getElementById('drawerLocation').textContent = loc;
+      document.getElementById('drawerDesc').textContent = desc;
+
+      toggleDrawer(true);
+    }
+
+    // Table Filter
+    function filterTable(filter, ev) {
+      const chips = document.querySelectorAll('.filter-chip');
+      chips.forEach(c => c.classList.remove('active'));
+      if (ev && ev.target) ev.target.classList.add('active');
+
+      const rows = document.querySelectorAll('#maintenanceTable tbody tr');
+      rows.forEach(r => {
+        const dept = r.getAttribute('data-dept');
+        const sev = r.getAttribute('data-severity');
+        if (filter === 'all') {
+          r.style.display = '';
+        } else if (filter === 'critical') {
+          r.style.display = (sev === 'critical') ? '' : 'none';
+        } else {
+          r.style.display = (dept === filter) ? '' : 'none';
+        }
+      });
+    }
+
+    // Corridor Node Inspector
+    function inspectNode(code, name, chainage, status, defects, windowTime, ev) {
+      document.querySelectorAll('.station-node').forEach(n => n.classList.remove('active'));
+      if (ev && ev.currentTarget) ev.currentTarget.classList.add('active');
+
+      document.getElementById('inspTitle').textContent = `${name} (${code}) — Telemetry`;
+      document.getElementById('inspChainage').textContent = chainage;
+      document.getElementById('inspDefects').textContent = defects;
+      document.getElementById('inspWindow').textContent = windowTime;
+      document.getElementById('inspStatus').textContent = status;
+      showToast(`Selected station: ${name}`);
+    }
+
+    function openBlockDetail(blkId) {
+      document.getElementById('drawerTitle').textContent = `Block Inspection: ${blkId}`;
+      document.getElementById('drawerTaskId').textContent = blkId;
+      document.getElementById('drawerDept').innerHTML = `<span class="badge badge-success">3 Departments Bundled</span>`;
+      document.getElementById('drawerSeverity').innerHTML = `<span class="badge badge-success">APPROVED SHADOW</span>`;
+      document.getElementById('drawerLocation').textContent = 'Ghaziabad — Aligarh Corridor Down Main';
+      document.getElementById('drawerDesc').textContent = 'Multi-department joint shadow block window. Accommodates rail replacement, point calibration, and OHE isolation simultaneously during freight loop gap.';
+      toggleDrawer(true);
+    }
+
+    // Search filter
+    document.getElementById('systemSearch').addEventListener('input', function(e) {
+      const query = e.target.value.toLowerCase().trim();
+      const sections = document.querySelectorAll('main.doc-viewport section.doc-section');
+      if (!query) {
+        sections.forEach(s => s.style.display = '');
+        return;
+      }
+      sections.forEach(s => {
+        const text = s.innerText.toLowerCase();
+        s.style.display = text.includes(query) ? '' : 'none';
+      });
+    });
+
+    // Active Sidebar Nav on Scroll
+    window.addEventListener('scroll', () => {
+      const sections = document.querySelectorAll('section.doc-section');
+      const navLinks = document.querySelectorAll('aside.nav-sidebar a.nav-item');
+      let current = '';
+
+      sections.forEach(sec => {
+        const top = sec.offsetTop;
+        if (window.scrollY >= top - 120) {
+          current = sec.getAttribute('id');
+        }
+      });
+
+      navLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === `#${current}`) {
+          link.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

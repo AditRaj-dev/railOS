@@ -115,7 +115,13 @@ def insert_emergency(world: ScenarioWorld, task: MaintenanceTask) -> ScenarioWor
 
 
 def approve(plan: Plan, approver: str) -> Plan:
-    """Human approval. Returns a new version; the proposed plan stays on record."""
+    """Human approval at the library/solver level. Returns a new version; the proposed plan stays on record.
+
+    Note: In RailOS, 'approved' now has two distinct layers:
+    - Library-level approval (this function): marks a Plan model instance APPROVED for simulator / offline flows.
+    - API-level sanctioning: multi-authority SanctionChain (Sr.DOM, Section Controller, TPC, Station Master)
+      before runtime possessions are opened.
+    """
     if plan.status is PlanStatus.APPROVED:
         raise ValueError(f"{plan.planId} is already approved")
     approved = plan.model_copy(deep=True)

@@ -137,16 +137,17 @@ class EvidenceProcessorPlugin : FlutterPlugin, ActivityAware, MethodChannel.Meth
         val bannerHeight = (height * 0.12f).coerceAtLeast(160f)
         val bannerTop = height - bannerHeight
 
-        // Background dark overlay
+        // Graphite evidence strip from RailOS DESIGN.md (not the legacy
+        // blue/navy palette). The baked proof must agree with the Flutter UI.
         val bgPaint = Paint().apply {
-            color = Color.argb(218, 11, 21, 40) // RailOS dark navy
+            color = Color.argb(224, 10, 7, 3) // #0A0703 / graphite overlay
             style = Paint.Style.FILL
         }
         canvas.drawRect(0f, bannerTop, width, height, bgPaint)
 
         // Accent top border line
         val borderPaint = Paint().apply {
-            color = if (geoVerdict == "WITHIN_RADIUS") Color.rgb(56, 189, 248) else Color.rgb(248, 113, 113)
+            color = if (geoVerdict == "WITHIN_RADIUS") Color.rgb(232, 163, 23) else Color.rgb(217, 120, 100)
             strokeWidth = 6f
             style = Paint.Style.STROKE
         }
@@ -162,7 +163,7 @@ class EvidenceProcessorPlugin : FlutterPlugin, ActivityAware, MethodChannel.Meth
         }
 
         val accentPaint = Paint().apply {
-            color = Color.rgb(56, 189, 248)
+            color = Color.rgb(232, 163, 23)
             textSize = fontSize
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             isAntiAlias = true
@@ -183,7 +184,7 @@ class EvidenceProcessorPlugin : FlutterPlugin, ActivityAware, MethodChannel.Meth
 
         // Line 3: Location and Verdict
         currentY += linePadding
-        val verdictColor = if (geoVerdict == "WITHIN_RADIUS") Color.rgb(52, 211, 153) else Color.rgb(248, 113, 113)
+        val verdictColor = if (geoVerdict == "WITHIN_RADIUS") Color.rgb(143, 179, 139) else Color.rgb(217, 120, 100)
         val verdictPaint = Paint().apply {
             color = verdictColor
             textSize = fontSize

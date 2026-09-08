@@ -20,6 +20,7 @@ from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 from railos_model import UserRole
+from .roles import normalize_role
 
 # Config
 JWT_SECRET = os.getenv("RAILOS_JWT_SECRET", "railos-insecure-dev-jwt-secret-key-32-chars-min")
@@ -165,7 +166,7 @@ def get_current_user(
     if credentials and credentials.credentials:
         payload = decode_access_token(credentials.credentials)
         user_id = payload.get("sub")
-        role = payload.get("role", "SUPERVISOR")
+        role = normalize_role(payload.get("role", "SUPERVISOR"))
         emp = payload.get("emp", user_id)
         if not user_id:
             raise HTTPException(401, {"code": "TOKEN_INVALID", "message": "Missing subject"})
@@ -179,7 +180,7 @@ def get_current_user(
 
     # 2. Synthetic header fallback (only permitted when ENABLE_SYNTHETIC_AUTH is True)
     if ENABLE_SYNTHETIC_AUTH and user_header:
-        role = role_header or "SUPERVISOR"
+        role = normalize_role(role_header or "SUPERVISOR")
         return UserAccount(
             userId=user_header,
             employeeId=user_header,
@@ -196,8 +197,10 @@ def get_current_user(
 
 def require_role(*allowed_roles: str):
     """FastAPI dependency to enforce specific roles (ADMIN always allowed)."""
+    norm_allowed = {normalize_role(r) for r in allowed_roles}
     def check_role(user: UserAccount = Depends(get_current_user)) -> UserAccount:
-        if user.role != "ADMIN" and user.role not in allowed_roles:
+        user_role_norm = normalize_role(user.role)
+        if user_role_norm != "ADMIN" and user_role_norm not in norm_allowed:
             raise HTTPException(
                 status_code=403,
                 detail={"code": "FORBIDDEN", "message": f"Role '{user.role}' is not authorized for this resource"},

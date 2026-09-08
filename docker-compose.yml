@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: railos-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - PYTHONUNBUFFERED=1
+      - RAILOS_STORAGE_BACKEND=memory
+    restart: unless-stopped
+
+  control-center:
+    build:
+      context: ./apps/control-center
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_RAILOS_API_URL=http://localhost:8000
+    container_name: railos-control-center
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_RAILOS_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_MAP_STYLE_URL=street
+      - NEXT_PUBLIC_RAILOS_MODE=synthetic
+    depends_on:
+      - api
+    restart: unless-stopped

@@ -19,7 +19,8 @@ class AppStrings {
       'location_stale': 'GPS Stale (>30s)',
       'within_radius': 'Within 100m Radius',
       'outside_radius': 'Outside Radius Exception',
-      'exception_reason_prompt': 'Enter Mandatory Operational Reason for Exception',
+      'exception_reason_prompt':
+          'Enter Mandatory Operational Reason for Exception',
       'submit_evidence': 'Process & Submit Evidence',
       'retake_btn': 'Retake Media',
       'evidence_strip_preview': 'RailOS Evidence Strip',

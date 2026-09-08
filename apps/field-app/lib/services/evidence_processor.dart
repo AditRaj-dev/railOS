@@ -43,8 +43,9 @@ class CapturePermissionDenied implements Exception {
 }
 
 class EvidenceProcessorService {
-  static const MethodChannel _channel =
-      MethodChannel('in.gov.railos.field_app/evidence_processor');
+  static const MethodChannel _channel = MethodChannel(
+    'in.gov.railos.field_app/evidence_processor',
+  );
 
   /// Opens the system camera and writes [fileName] into the app's capture
   /// directory (chosen natively, since FileProvider can only share declared roots).
@@ -74,7 +75,9 @@ class EvidenceProcessorService {
   /// Returns the device's current fix, or null when location is denied/unavailable.
   static Future<DeviceFix?> currentFix({int timeoutMs = 8000}) async {
     try {
-      final res = await _channel.invokeMethod<Map>('currentLocation', {'timeoutMs': timeoutMs});
+      final res = await _channel.invokeMethod<Map>('currentLocation', {
+        'timeoutMs': timeoutMs,
+      });
       if (res == null) return null;
       return DeviceFix(
         latitude: (res['latitude'] as num).toDouble(),
