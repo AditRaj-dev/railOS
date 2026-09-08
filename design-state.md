@@ -53,6 +53,7 @@ _Last updated: 2026-09-08 by implementation-planning_
 | Railway map implementation plan | `docs/designpowers/plans/2026-09-08-railway-map-implementation-plan.md` | Approved for execution |
 | Reported-area design brief | `docs/designpowers/briefs/2026-09-08-all-india-railway-map-reported-areas.md` | Approved |
 | Reported-area design spec | `docs/superpowers/specs/2026-09-08-all-india-railway-map-reported-areas-design.md` | Approved |
+| Reported-area implementation plan | `docs/superpowers/plans/2026-09-08-all-india-railway-map-reported-areas.md` | Ready for execution review |
 
 ## Design Debt Register
 
