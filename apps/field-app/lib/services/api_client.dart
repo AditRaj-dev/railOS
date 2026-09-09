@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/evidence_models.dart';
+import 'evidence_processor.dart';
 import '../storage/local_store.dart';
 import '../storage/offline_evidence_queue.dart';
 
@@ -567,10 +568,18 @@ class RailOSApiClient {
       throw RailOSApiException(
         statusCode: 0,
         code: 'CAPTURE_FILE_MISSING',
-        message: 'The captured file is no longer on this device: $filePath',
+        message:
+            'The $storageKind capture is no longer on this device. '
+            'Retake the photo for this step.',
       );
     }
     final totalBytes = await file.length();
+    // The overlay pass supplies a digest; when it fell back it does not, and
+    // an empty or invented hash would be attested in the signed manifest.
+    // Compute it natively over the bytes actually on disk.
+    final digest = (knownSha256 == null || knownSha256.isEmpty)
+        ? await EvidenceProcessorService.computeSha256(filePath) ?? ''
+        : knownSha256;
 
     final session = _asMap(
       await _authedRequest(
@@ -651,7 +660,7 @@ class RailOSApiClient {
         'sessionId': sessionId,
         'storageKind': storageKind,
         'parts': parts,
-        'sha256': knownSha256 ?? '',
+        'sha256': digest,
         'sizeBytes': totalBytes,
       },
     );
@@ -680,8 +689,12 @@ class RailOSApiClient {
     final contentType = evidence.kind == EvidenceKind.video
         ? 'video/mp4'
         : 'image/jpeg';
+    // The watermarked proof is a second copy of the same capture. When the
+    // native overlay pass could not produce one, the original still carries
+    // the evidence, so upload what exists rather than failing the submit.
     final proofIsSeparate = evidence.proofFilePath.isNotEmpty &&
-        evidence.proofFilePath != evidence.originalFilePath;
+        evidence.proofFilePath != evidence.originalFilePath &&
+        await File(evidence.proofFilePath).exists();
 
     // The bar spans both files, so it does not jump back to zero when the
     // proof copy starts.

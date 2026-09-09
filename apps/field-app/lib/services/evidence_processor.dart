@@ -72,6 +72,21 @@ class EvidenceProcessorService {
     }
   }
 
+  /// SHA-256 of a file on the handset, computed natively so a large video is
+  /// never held in Dart memory. Null when the native engine is unavailable.
+  static Future<String?> computeSha256(String filePath) async {
+    try {
+      final res = await _channel.invokeMethod<Map>('computeSha256', {
+        'filePath': filePath,
+      });
+      return res?['sha256'] as String?;
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// Returns the device's current fix, or null when location is denied/unavailable.
   static Future<DeviceFix?> currentFix({int timeoutMs = 8000}) async {
     try {
@@ -138,15 +153,20 @@ class EvidenceProcessorService {
       // Fallback for mock/test runs without native Android engine
     }
 
-    // Fallback emulation for unit testing / desktop preview
+    // Fallback for unit tests, desktop preview, and a native overlay pass
+    // that failed. It used to hand back outputPath -- a watermarked file that
+    // was never written -- plus placeholder digests, so the upload then died
+    // on a file that did not exist and would have attested a false hash.
+    // Point the proof at the original instead: no phantom file, and the
+    // caller can see the two paths are the same and skip the second upload.
     final srcFile = File(sourcePath);
-    final size = await srcFile.exists() ? await srcFile.length() : 1024;
+    final size = await srcFile.exists() ? await srcFile.length() : 0;
     return EvidenceProcessorResult(
-      originalSha256: 'a' * 64,
-      proofSha256: 'b' * 64,
-      proofPath: outputPath,
+      originalSha256: '',
+      proofSha256: '',
+      proofPath: sourcePath,
       originalSizeBytes: size,
-      proofSizeBytes: (size * 0.9).toInt(),
+      proofSizeBytes: size,
     );
   }
 }
