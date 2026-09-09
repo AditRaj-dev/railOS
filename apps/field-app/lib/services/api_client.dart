@@ -471,6 +471,101 @@ class RailOSApiClient {
     }
   }
 
+  /// PUT one part straight at the object store's presigned URL and return
+  /// its ETag. This never carries our Authorization header: the signature in
+  /// the URL is the credential, and Neon/S3 rejects a request that also
+  /// carries a bearer token.
+  Future<String> _uploadPart(String url, List<int> bytes) async {
+    final client = HttpClient();
+    try {
+      final request = await client.putUrl(Uri.parse(url));
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
+      request.headers.contentLength = bytes.length;
+      request.add(bytes);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw RailOSApiException(
+          statusCode: response.statusCode,
+          code: 'PART_UPLOAD_FAILED',
+          message: 'Object store rejected part upload: ${body.trim()}',
+        );
+      }
+      final etag = response.headers.value(HttpHeaders.etagHeader) ?? '';
+      return etag.replaceAll('"', '');
+    } on SocketException catch (error) {
+      throw RailOSNetworkException(
+        'Object store is unreachable: ${error.message}',
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Send one captured file to the object store: initiate, presign and PUT
+  /// every part, then tell the API the upload is complete. Without this the
+  /// evidence record reached the server with no bytes behind it -- a storage
+  /// key of null and a zero size -- and the photo never left the handset.
+  Future<void> _uploadEvidenceFile({
+    required String evidenceId,
+    required String storageKind,
+    required String filePath,
+    required String contentType,
+    required String? knownSha256,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw RailOSApiException(
+        statusCode: 0,
+        code: 'CAPTURE_FILE_MISSING',
+        message: 'The captured file is no longer on this device: $filePath',
+      );
+    }
+    final bytes = await file.readAsBytes();
+
+    final session = _asMap(
+      await _authedRequest(
+        'POST',
+        '/api/v1/evidence/$evidenceId/uploads/initiate',
+        body: {
+          'storageKind': storageKind,
+          'totalBytes': bytes.length,
+          'contentType': contentType,
+        },
+      ),
+    );
+    final sessionId = session['sessionId'] as String? ?? '';
+    final partSize = (session['partSizeBytes'] as num?)?.toInt() ?? bytes.length;
+    final totalParts = (session['totalParts'] as num?)?.toInt() ?? 1;
+
+    final parts = <Map<String, dynamic>>[];
+    for (var partNumber = 1; partNumber <= totalParts; partNumber++) {
+      final start = (partNumber - 1) * partSize;
+      final end = start + partSize > bytes.length ? bytes.length : start + partSize;
+      final presign = _asMap(
+        await _authedRequest(
+          'POST',
+          '/api/v1/evidence/$evidenceId/uploads/parts/$partNumber/presign?sessionId=$sessionId',
+        ),
+      );
+      final url = presign['uploadUrl'] as String? ?? presign['url'] as String? ?? '';
+      final etag = await _uploadPart(url, bytes.sublist(start, end));
+      parts.add({'partNumber': partNumber, 'etag': etag});
+    }
+
+    await _authedRequest(
+      'POST',
+      '/api/v1/evidence/$evidenceId/uploads/complete',
+      body: {
+        'sessionId': sessionId,
+        'storageKind': storageKind,
+        'parts': parts,
+        'sha256': knownSha256 ?? '',
+        'sizeBytes': bytes.length,
+      },
+    );
+  }
+
   Future<void> syncEvidence(CapturedEvidence evidence) async {
     await _request(
       'POST',
@@ -488,6 +583,27 @@ class RailOSApiClient {
       },
       headers: _headers(),
     );
+    final contentType = evidence.kind == EvidenceKind.video
+        ? 'video/mp4'
+        : 'image/jpeg';
+    await _uploadEvidenceFile(
+      evidenceId: evidence.evidenceId,
+      storageKind: 'ORIGINAL',
+      filePath: evidence.originalFilePath,
+      contentType: contentType,
+      knownSha256: evidence.originalSha256,
+    );
+    if (evidence.proofFilePath.isNotEmpty &&
+        evidence.proofFilePath != evidence.originalFilePath) {
+      await _uploadEvidenceFile(
+        evidenceId: evidence.evidenceId,
+        storageKind: 'PROOF',
+        filePath: evidence.proofFilePath,
+        contentType: contentType,
+        knownSha256: evidence.proofSha256,
+      );
+    }
+
     final response = await _request(
       'POST',
       '/api/v1/evidence/${evidence.evidenceId}:finalize',
