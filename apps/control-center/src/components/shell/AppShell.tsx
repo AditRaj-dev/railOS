@@ -82,7 +82,9 @@ export function AppShell({ children }: AppShellProps) {
   // Mounted once here rather than per-view: it already invalidates the
   // relevant query caches on BLOCK_REQUEST_CREATED and friends, and every
   // view under the shell benefits without opening a socket per view.
-  useRailOSEventStream();
+  // Unauthenticated, the socket has no token to send and the API closes it,
+  // so it would only reconnect in a loop behind the login prompt.
+  useRailOSEventStream(Boolean(authSession));
 
   React.useEffect(() => {
     // Attempt to restore a real session from a persisted refresh token once,
@@ -91,6 +93,13 @@ export function AppShell({ children }: AppShellProps) {
     void restoreSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    // Without a session every view renders empty on a wall of 401s, which
+    // reads as "the data is missing" rather than "you are signed out". Ask
+    // for credentials instead of leaving the operator to find the button.
+    if (authStatus === 'unauthenticated') setLoginModalOpen(true);
+  }, [authStatus]);
 
   React.useEffect(() => {
     // The acting role is a demo-session choice, not an identity: keep it across
