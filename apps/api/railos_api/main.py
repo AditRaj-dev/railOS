@@ -765,7 +765,13 @@ def _resolve_request_asset(body: BlockRequestCreate) -> Asset:
     return candidates[0]
 
 
-def _validate_request_location(body: BlockRequestCreate, asset: Asset) -> None:
+def _resolve_request_section(body: BlockRequestCreate):
+    """The corridor's own section record, or a 422 naming what is wrong.
+
+    Runs before asset resolution: the demo catalogue carries overview-only
+    sections that no corridor plans, and answering those with ASSET_REQUIRED
+    sent operators hunting for an asset that was never the problem.
+    """
     corridor = state.corridors.get(body.corridor_id)
     if corridor is None:
         raise HTTPException(422, {
@@ -777,9 +783,28 @@ def _validate_request_location(body: BlockRequestCreate, asset: Asset) -> None:
     if section is None:
         raise HTTPException(422, {
             "code": "SECTION_CORRIDOR_MISMATCH",
-            "message": "the selected section is not on the requested corridor",
-            "details": {"field": "sectionId", "sectionId": body.section_id, "corridorId": body.corridor_id},
+            "message": f"section {body.section_id} is not planable on corridor {body.corridor_id}",
+            "details": {
+                "field": "sectionId",
+                "sectionId": body.section_id,
+                "corridorId": body.corridor_id,
+                "sectionIds": [candidate.sectionId for candidate in corridor.sections],
+            },
         })
+    if body.track not in section.tracks:
+        raise HTTPException(422, {
+            "code": "TRACK_NOT_ON_SECTION",
+            "message": f"section {body.section_id} has no {body.track.value} track",
+            "details": {
+                "field": "track",
+                "sectionId": body.section_id,
+                "tracks": [track.value for track in section.tracks],
+            },
+        })
+    return section
+
+
+def _validate_request_location(body: BlockRequestCreate, asset: Asset, section) -> None:
     if body.km_end * 1000 > section.endM or body.km_start * 1000 < section.startM:
         raise HTTPException(422, {
             "code": "KM_OUT_OF_SECTION",
@@ -924,8 +949,9 @@ def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header
             "message": f"task type '{body.task_type.value}' is not valid for department {body.department.value}",
             "details": {"field": "taskType", "department": body.department.value, "allowed": [t.value for t in allowed_task_types]},
         })
+    section = _resolve_request_section(body)
     asset = _resolve_request_asset(body)
-    _validate_request_location(body, asset)
+    _validate_request_location(body, asset, section)
     request_id = body.request_id or f"REQ-{uuid.uuid4().hex[:10].upper()}"
     task = _build_linked_task(body, request_id, asset)
     now = datetime.now(timezone.utc).isoformat()

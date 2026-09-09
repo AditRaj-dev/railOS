@@ -68,9 +68,31 @@ class TicketApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["error"]["code"], "TASK_TYPE_DEPARTMENT_MISMATCH")
 
-    def test_asset_required_when_ambiguous_or_missing(self):
-        payload = base_payload(track="THIRD")
-        response = self.client.post("/api/v1/block-requests", headers=ENGG_HEADERS, json=payload)
+    def test_track_not_on_section_is_named_as_such(self):
+        # The demo network is double line; a THIRD-track request is a track
+        # problem and must not be reported as a missing asset.
+        response = self.client.post("/api/v1/block-requests", headers=ENGG_HEADERS, json=base_payload(track="THIRD"))
+        self.assertEqual(response.status_code, 422)
+        error = response.json()["error"]
+        self.assertEqual(error["code"], "TRACK_NOT_ON_SECTION")
+        self.assertEqual(sorted(error["details"]["tracks"]), ["DOWN", "UP"])
+
+    def test_overview_only_section_is_refused_before_the_asset_question(self):
+        response = self.client.post(
+            "/api/v1/block-requests", headers=ENGG_HEADERS,
+            json=base_payload(sectionId="DEMO_FZR_LDH"),
+        )
+        self.assertEqual(response.status_code, 422)
+        error = response.json()["error"]
+        self.assertEqual(error["code"], "SECTION_CORRIDOR_MISMATCH")
+        self.assertIn("SEC_GZB_DER", error["details"]["sectionIds"])
+
+    def test_asset_required_when_no_candidate_matches(self):
+        # Point work where the section and track hold no point machine.
+        response = self.client.post(
+            "/api/v1/block-requests", headers=SNT_HEADERS,
+            json=base_payload(department="SNT", taskType="POINT_MACHINE_MAINT", estimatedDuration=120),
+        )
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["error"]["code"], "ASSET_REQUIRED")
 

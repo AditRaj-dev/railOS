@@ -15,7 +15,7 @@ const mutate = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useNetworkCatalog).mockReturnValue({
-    data: { sections: [{ sectionId: 'SEC_KRJ_SMQ', name: 'Khurja–Somna' }] },
+    data: { sections: [{ sectionId: 'SEC_KRJ_SMQ', name: 'Khurja–Somna', planningEnabled: true, tracks: ['UP', 'DOWN'] }] },
     isLoading: false,
   } as never);
   vi.mocked(useTicketTaskTypes).mockReturnValue({

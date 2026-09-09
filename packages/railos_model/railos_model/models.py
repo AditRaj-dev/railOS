@@ -147,6 +147,9 @@ class RailwaySegment(BaseModel):
     sectionId: str
     divisionId: str
     zoneId: str
+    #: Set on per-track segments; None on a segment that stands for the whole
+    #: section regardless of road.
+    track: Track | None = None
     geometry: GeoJSONGeometry
     riskScore: int = Field(default=0, ge=0, le=100)
     maintenancePressure: int = Field(default=0, ge=0, le=100)
