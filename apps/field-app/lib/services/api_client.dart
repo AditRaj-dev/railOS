@@ -144,9 +144,14 @@ class RailOSApiClient {
         final error = decoded is Map
             ? Map<String, dynamic>.from(decoded)
             : <String, dynamic>{};
-        final detail = error['detail'];
-        final envelope = detail is Map
-            ? Map<String, dynamic>.from(detail)
+        // RailOS wraps failures as {"error": {code, message, details}};
+        // FastAPI's own validation errors arrive under "detail". Reading only
+        // the latter left every RailOS error as a bare HTTP_404 with the
+        // generic "server rejected this request", hiding what actually broke.
+        final envelope = error['error'] is Map
+            ? Map<String, dynamic>.from(error['error'] as Map)
+            : error['detail'] is Map
+            ? Map<String, dynamic>.from(error['detail'] as Map)
             : error;
         throw RailOSApiException(
           statusCode: response.statusCode,
