@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../shell/emergency_action.dart';
 import '../theme/railos_tokens.dart';
 import '../theme/railos_widgets.dart';
 import 'possession_ui.dart';
@@ -218,6 +219,10 @@ class _HandbackScreenState extends State<HandbackScreen> {
             context,
           ).textTheme.titleMedium?.copyWith(fontFamily: 'monospace'),
         ),
+        actions: [
+          EmergencyAppBarAction(apiClient: widget.apiClient),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         child: ListView(

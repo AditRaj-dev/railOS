@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../shell/emergency_action.dart';
 import '../theme/railos_tokens.dart';
 import '../theme/railos_widgets.dart';
 import 'handback_screen.dart';
@@ -28,7 +29,7 @@ class _PossessionScreenState extends State<PossessionScreen> {
   late Map<String, dynamic> _possession;
   Timer? _clock;
   DateTime _now = DateTime.now().toUtc();
-  bool _isLoading = false;
+  String? _actionInFlight;
   final Set<String> _queuedActions = <String>{};
 
   @override
@@ -47,7 +48,7 @@ class _PossessionScreenState extends State<PossessionScreen> {
   }
 
   Future<void> _runAction(String action, {String? deferredUntilUtc}) async {
-    setState(() => _isLoading = true);
+    setState(() => _actionInFlight = action);
     try {
       final result = await widget.apiClient.postPossessionAction(
         possessionId: _string('possessionId'),
@@ -56,7 +57,7 @@ class _PossessionScreenState extends State<PossessionScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
+        _actionInFlight = null;
         if (result['queued'] == true) {
           _queuedActions.add(action);
         } else {
@@ -73,7 +74,7 @@ class _PossessionScreenState extends State<PossessionScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() => _actionInFlight = null);
       _announce(_recoveryMessage(error), RailOSTokens.status_critical_bg);
     }
   }
@@ -285,6 +286,10 @@ class _PossessionScreenState extends State<PossessionScreen> {
             context,
           ).textTheme.titleMedium?.copyWith(fontFamily: 'monospace'),
         ),
+        actions: [
+          EmergencyAppBarAction(apiClient: widget.apiClient),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -292,7 +297,14 @@ class _PossessionScreenState extends State<PossessionScreen> {
             try {
               final updated = await widget.apiClient.fetchPossession(id);
               if (mounted) setState(() => _possession = updated);
-            } catch (_) {}
+            } catch (e) {
+              if (mounted) {
+                _announce(
+                  'Failed to refresh possession: ${_recoveryMessage(e)}',
+                  RailOSTokens.status_critical_bg,
+                );
+              }
+            }
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -416,6 +428,8 @@ class _PossessionScreenState extends State<PossessionScreen> {
                 )
               else
                 ..._allowedActions.map((action) {
+                  final inFlight = _actionInFlight == action;
+                  final anyInFlight = _actionInFlight != null;
                   if (action == 'defer') {
                     return Padding(
                       padding: const EdgeInsets.only(
@@ -423,8 +437,8 @@ class _PossessionScreenState extends State<PossessionScreen> {
                       ),
                       child: RailOSPossessionActionButton(
                         action: action,
-                        onPressed: _isLoading ? null : _defer,
-                        isLoading: _isLoading,
+                        onPressed: anyInFlight ? null : _defer,
+                        isLoading: inFlight,
                       ),
                     );
                   }
@@ -434,8 +448,8 @@ class _PossessionScreenState extends State<PossessionScreen> {
                     ),
                     child: RailOSPossessionActionButton(
                       action: action,
-                      onPressed: _isLoading ? null : () => _runAction(action),
-                      isLoading: _isLoading,
+                      onPressed: anyInFlight ? null : () => _runAction(action),
+                      isLoading: inFlight,
                     ),
                   );
                 }),

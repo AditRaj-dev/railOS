@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { AlertCircle, BarChart3, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
+import { BarChart3, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAnalyticsSummary } from '../lib/queries';
 import { StatusChip } from './StatusChip';
 import { POSSESSION_STATE_TOKENS } from './tokens';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
+import { QueryState } from './ui/QueryState';
 
 function formatUtc(value?: string | null): string {
   if (!value) return '—';
@@ -26,37 +27,35 @@ export const AnalyticsView: React.FC = () => {
 
   return (
     <div className="space-y-4" aria-labelledby="analytics-title">
-      <header className="flex flex-wrap items-start justify-between gap-3 rounded border border-slate-800 bg-slate-900/80 p-4">
+      <header className="flex flex-wrap items-start justify-between gap-3 rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-4">
         <div>
-          <p className="text-[11px] font-mono uppercase tracking-[0.18em] text-amber-300">Operational analytics</p>
-          <h1 id="analytics-title" className="mt-1 text-lg font-semibold text-white">Block-burst variance</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-400">
-            Planned close versus actual close for completed possessions. Live updates arrive from the RailOS event stream.
+          <p className="text-[11px] font-mono uppercase tracking-[0.18em] text-[var(--accent)]">Operational analytics</p>
+          <h1 id="analytics-title" className="mt-1 text-lg font-semibold text-[var(--text-primary)]">Block-burst variance</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--text-secondary)]">
+            Planned close versus actual close for completed possessions. Live updates arrive from the Railblock event stream.
           </p>
         </div>
         <button
           type="button"
           onClick={() => void summary.refetch()}
-          className="inline-flex min-h-11 items-center gap-2 rounded border border-slate-700 px-3 text-sm text-slate-200 hover:border-amber-400 hover:text-amber-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
+          className="inline-flex min-h-11 items-center gap-2 rounded border border-[var(--border-strong)] px-3 text-sm text-[var(--text-primary)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] cursor-pointer"
           aria-label="Refresh block-burst analytics"
         >
           <RefreshCw className="h-4 w-4" aria-hidden="true" /> Refresh
         </button>
       </header>
 
-      {summary.isLoading && (
-        <p className="rounded border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300" role="status">Loading block-burst analytics…</p>
-      )}
-      {summary.isError && (
-        <div className="flex items-start gap-2 rounded border border-red-900/80 bg-red-950/40 p-4 text-sm text-red-200" role="alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Analytics could not be loaded. {summary.error?.message || 'Try again.'}</span>
-        </div>
-      )}
-
-      {summary.data && (
-        <>
-          <section aria-labelledby="burst-summary-title" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <QueryState
+        isLoading={summary.isLoading}
+        isError={summary.isError}
+        error={summary.error}
+        onRetry={() => void summary.refetch()}
+        loadingMessage="Loading block-burst analytics…"
+        errorMessage="Analytics could not be loaded from the server."
+      >
+        {summary.data && (
+          <>
+            <section aria-labelledby="burst-summary-title" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <h2 id="burst-summary-title" className="sr-only">Block-burst summary</h2>
             <article className="rounded border border-slate-800 bg-slate-950 p-4">
               <p className="text-xs text-slate-400">Block bursts</p>
@@ -75,7 +74,7 @@ export const AnalyticsView: React.FC = () => {
             </article>
             <article className="rounded border border-slate-800 bg-slate-950 p-4">
               <p className="text-xs text-slate-400">Data source</p>
-              <p className="mt-2 flex items-center gap-2 text-base font-semibold text-white"><ShieldCheck className="h-5 w-5 text-emerald-300" aria-hidden="true" />{summary.data.synthetic ? 'Synthetic fixture' : 'RailOS API'}</p>
+              <p className="mt-2 flex items-center gap-2 text-base font-semibold text-white"><ShieldCheck className="h-5 w-5 text-emerald-300" aria-hidden="true" />{summary.data.synthetic ? 'Synthetic fixture' : 'Railblock API'}</p>
               <p className="mt-1 text-xs text-slate-500">Server-provided values</p>
             </article>
           </section>
@@ -126,6 +125,7 @@ export const AnalyticsView: React.FC = () => {
           </section>
         </>
       )}
+      </QueryState>
     </div>
   );
 };

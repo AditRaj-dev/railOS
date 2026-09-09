@@ -326,3 +326,17 @@ def test_flagged_evidence_and_control_officer_review():
     assert review_res.status_code == 200
     assert review_res.json()["status"] == "ACCEPTED_EXCEPTION"
     assert review_res.json()["reviewerId"] == "admin-01"
+
+
+def test_demo_upload_returns_typed_evidence_and_manifest_envelope():
+    login = client.post("/api/v1/auth/login", json={"employeeId": "EMP901", "password": "Field@123"})
+    assert login.status_code == 200
+    response = client.post(
+        "/api/v1/evidence/demo-upload",
+        headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
+        json={"taskId": "ENG-1001", "stepId": "stp-ENG-1001-1", "kind": "PHOTO", "scenario": "COMPLIANT"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["evidence"]["status"] == "VERIFIED"
+    assert body["manifest"]["evidenceId"] == body["evidence"]["evidenceId"]

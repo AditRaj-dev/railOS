@@ -23,8 +23,13 @@ const FOCUSABLE_SELECTOR = [
 /** Modal primitive with labelled dialog semantics, Escape handling, and focus containment. */
 export function Modal({ open, title, description, onClose, children, maxWidthClassName = 'max-w-lg' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
   const descriptionId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -40,7 +45,7 @@ export function Modal({ open, title, description, onClose, children, maxWidthCla
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -66,7 +71,7 @@ export function Modal({ open, title, description, onClose, children, maxWidthCla
       dialog.removeEventListener('keydown', handleKeyDown);
       previousFocus?.focus();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -100,4 +105,3 @@ export function Modal({ open, title, description, onClose, children, maxWidthCla
     </div>
   );
 }
-

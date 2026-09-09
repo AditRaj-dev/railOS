@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ShieldCheck,
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Lock,
+  Upload,
 } from 'lucide-react';
 import {
   getEvidenceList,
@@ -24,13 +25,22 @@ import {
 } from '@/lib/api';
 import { Modal } from './ui/Modal';
 import { EvidenceDetailModal } from './EvidenceDetailModal';
+import { EvidenceUploadModal } from './EvidenceUploadModal';
 
 export function EvidenceReviewView() {
   const [activeTab, setActiveTab] = useState<'flagged' | 'timeline' | 'supervisors'>('flagged');
   const [evidenceItems, setEvidenceItems] = useState<EvidenceRecord[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorRecord[]>([]);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [supervisorError, setSupervisorError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const selectionId = useRef(0);
 
   // Supervisor creation state
   const [showAddSupervisor, setShowAddSupervisor] = useState(false);
@@ -39,20 +49,22 @@ export function EvidenceReviewView() {
   const [newPassword, setNewPassword] = useState('');
   const [newSections, setNewSections] = useState('SEC_KRJ_SMQ, GZB-ALJN');
 
-  const fetchData = async () => {
-    try {
-      const [evRes, supRes] = await Promise.all([
+  const fetchData = useCallback(async () => {
+    const request = ++requestId.current;
+    setLoading(true);
+    setEvidenceError(null);
+    setSupervisorError(null);
+      const [evRes, supRes] = await Promise.allSettled([
         getEvidenceList(),
         getSupervisorsList(),
       ]);
-      setEvidenceItems(evRes.items || []);
-      setSupervisors(supRes.items || []);
-    } catch (err) {
-      console.error('Failed to fetch evidence data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (request !== requestId.current) return;
+    if (evRes.status === 'fulfilled') setEvidenceItems(evRes.value.items || []);
+    else setEvidenceError(`Unable to load evidence: ${String(evRes.reason)}`);
+    if (supRes.status === 'fulfilled') setSupervisors(supRes.value.items || []);
+    else setSupervisorError(`Unable to load supervisors: ${String(supRes.reason)}`);
+    setLoading(false);
+  }, []);
 
   const handleRefresh = () => {
     setLoading(true);
@@ -64,32 +76,37 @@ export function EvidenceReviewView() {
     // Promise.all await, not synchronously within this effect body.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
-  }, []);
+    return () => { requestId.current += 1; selectionId.current += 1; };
+  }, [fetchData]);
 
   const flaggedItems = evidenceItems.filter(
-    (item) => item.status === 'FLAGGED_REVIEW' || item.status === 'DRAFT'
+    (item) => item.status === 'FLAGGED_REVIEW'
   );
   const verifiedItems = evidenceItems.filter(
     (item) => item.status === 'VERIFIED' || item.status === 'ACCEPTED_EXCEPTION'
   );
 
   const handleSelectEvidence = async (item: EvidenceRecord) => {
+    const selection = ++selectionId.current;
+    setActionError(null);
     try {
       const details = await getEvidenceDetails(item.evidenceId);
-      setSelectedEvidence(details);
-    } catch {
-      setSelectedEvidence(item);
+      if (selection === selectionId.current) setSelectedEvidence(details);
+    } catch (err) {
+      if (selection === selectionId.current) setActionError(`Unable to load evidence details. Select the evidence to retry. ${String(err)}`);
     }
   };
 
   const handleCreateSupervisor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmpId || !newName || !newPassword) return;
+    if (creating || !newEmpId.trim() || !newName.trim() || !newPassword) return;
+    setCreating(true);
+    setCreateError(null);
     try {
       const sections = newSections.split(',').map((s) => s.trim()).filter(Boolean);
       await createSupervisorAccount({
-        employeeId: newEmpId,
-        name: newName,
+        employeeId: newEmpId.trim(),
+        name: newName.trim(),
         password: newPassword,
         assignedSectionCodes: sections,
       });
@@ -99,7 +116,9 @@ export function EvidenceReviewView() {
       setNewPassword('');
       await fetchData();
     } catch (err) {
-      alert('Failed to create supervisor: ' + String(err));
+      setCreateError('Failed to create supervisor: ' + String(err));
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -121,7 +140,15 @@ export function EvidenceReviewView() {
 
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            UPLOAD DEMO EVIDENCE
+          </button>
+          <button
             onClick={handleRefresh}
+            disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -132,9 +159,9 @@ export function EvidenceReviewView() {
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div
+        <button type="button" aria-pressed={activeTab === 'flagged'}
           onClick={() => setActiveTab('flagged')}
-          className={`cursor-pointer p-4 rounded-lg border transition-all ${
+          className={`text-left p-4 rounded-lg border transition-all ${
             activeTab === 'flagged'
               ? 'bg-purple-950/40 border-purple-600/80 ring-1 ring-purple-500'
               : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
@@ -148,11 +175,11 @@ export function EvidenceReviewView() {
             {flaggedItems.length}
           </div>
           <p className="text-xs text-slate-400 mt-1">Requires Control Officer approval</p>
-        </div>
+        </button>
 
-        <div
+        <button type="button" aria-pressed={activeTab === 'timeline'}
           onClick={() => setActiveTab('timeline')}
-          className={`cursor-pointer p-4 rounded-lg border transition-all ${
+          className={`text-left p-4 rounded-lg border transition-all ${
             activeTab === 'timeline'
               ? 'bg-emerald-950/40 border-emerald-600/80 ring-1 ring-emerald-500'
               : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
@@ -166,11 +193,11 @@ export function EvidenceReviewView() {
             {verifiedItems.length}
           </div>
           <p className="text-xs text-slate-400 mt-1">Server signed & tamper-proof</p>
-        </div>
+        </button>
 
-        <div
+        <button type="button" aria-pressed={activeTab === 'supervisors'}
           onClick={() => setActiveTab('supervisors')}
-          className={`cursor-pointer p-4 rounded-lg border transition-all ${
+          className={`text-left p-4 rounded-lg border transition-all ${
             activeTab === 'supervisors'
               ? 'bg-sky-950/40 border-sky-600/80 ring-1 ring-sky-500'
               : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
@@ -184,12 +211,13 @@ export function EvidenceReviewView() {
             {supervisors.length}
           </div>
           <p className="text-xs text-slate-400 mt-1">Authorized section rosters</p>
-        </div>
+        </button>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-800 gap-6">
         <button
+          aria-pressed={activeTab === 'flagged'}
           onClick={() => setActiveTab('flagged')}
           className={`pb-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
             activeTab === 'flagged'
@@ -202,6 +230,7 @@ export function EvidenceReviewView() {
         </button>
 
         <button
+          aria-pressed={activeTab === 'timeline'}
           onClick={() => setActiveTab('timeline')}
           className={`pb-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
             activeTab === 'timeline'
@@ -214,6 +243,7 @@ export function EvidenceReviewView() {
         </button>
 
         <button
+          aria-pressed={activeTab === 'supervisors'}
           onClick={() => setActiveTab('supervisors')}
           className={`pb-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
             activeTab === 'supervisors'
@@ -226,14 +256,23 @@ export function EvidenceReviewView() {
         </button>
       </div>
 
+      {loading && <p role="status" className="text-sm text-slate-300">Loading evidence and supervisors...</p>}
+      {actionError && <p role="alert" className="text-sm text-red-300">{actionError}</p>}
+      {!loading && (activeTab === 'supervisors' ? supervisorError : evidenceError) && (
+        <div role="alert" className="rounded border border-red-800 p-4 text-sm text-red-300">
+          <p>{activeTab === 'supervisors' ? supervisorError : evidenceError}</p>
+          <button type="button" onClick={handleRefresh} className="mt-2 underline">Retry loading data</button>
+        </div>
+      )}
+
       {/* Tab 1: Flagged Queue */}
-      {activeTab === 'flagged' && (
+      {!loading && !evidenceError && activeTab === 'flagged' && (
         <div className="space-y-4">
           {flaggedItems.length === 0 ? (
             <div className="p-8 text-center rounded-lg border border-slate-800 bg-slate-900/40 text-slate-400">
               <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
               <p className="font-semibold text-white">No Flagged Items in Queue</p>
-              <p className="text-xs mt-1">All submitted evidence satisfies authoritative geo-radius and integrity rules.</p>
+              <p className="text-xs mt-1">No evidence is currently awaiting an exception decision. Check the audit timeline for other statuses.</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/60">
@@ -292,7 +331,7 @@ export function EvidenceReviewView() {
       )}
 
       {/* Tab 2: Timeline */}
-      {activeTab === 'timeline' && (
+      {!loading && !evidenceError && activeTab === 'timeline' && (
         <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-900/60">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-800/80 text-slate-400 font-mono uppercase border-b border-slate-700">
@@ -353,7 +392,7 @@ export function EvidenceReviewView() {
       )}
 
       {/* Tab 3: Supervisors */}
-      {activeTab === 'supervisors' && (
+      {!loading && !supervisorError && activeTab === 'supervisors' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-base font-bold text-white">Supervisor Directory & Section Jurisdictions</h2>
@@ -411,8 +450,13 @@ export function EvidenceReviewView() {
                           );
                           if (input !== null) {
                             const list = input.split(',').map((s) => s.trim()).filter(Boolean);
-                            await updateSupervisorAreas(sup.userId, list);
-                            await fetchData();
+                            try {
+                              setActionError(null);
+                              await updateSupervisorAreas(sup.userId, list);
+                              await fetchData();
+                            } catch (err) {
+                              setActionError(`Unable to update supervisor sections: ${String(err)}`);
+                            }
                           }
                         }}
                         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700"
@@ -446,10 +490,12 @@ export function EvidenceReviewView() {
           maxWidthClassName="max-w-md"
         >
           <form onSubmit={handleCreateSupervisor} className="space-y-4">
+            {createError && <p role="alert" className="text-sm text-red-300">{createError}</p>}
             <div className="space-y-3 text-xs font-sans">
               <div>
-                <label className="block text-slate-400 mb-1">Employee ID</label>
+                <label htmlFor="supervisor-employee" className="block text-slate-400 mb-1">Employee ID</label>
                 <input
+                  id="supervisor-employee"
                   type="text"
                   required
                   placeholder="e.g. EMP906"
@@ -460,8 +506,9 @@ export function EvidenceReviewView() {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Full Name & Designation</label>
+                <label htmlFor="supervisor-name" className="block text-slate-400 mb-1">Full Name & Designation</label>
                 <input
+                  id="supervisor-name"
                   type="text"
                   required
                   placeholder="e.g. Vikram Singh (SSE/P-Way)"
@@ -472,8 +519,11 @@ export function EvidenceReviewView() {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Initial Password</label>
+                <label htmlFor="supervisor-password" className="block text-slate-400 mb-1">Initial Password</label>
                 <input
+                  id="supervisor-password"
+                  minLength={8}
+                  autoComplete="new-password"
                   type="password"
                   required
                   placeholder="Min 8 characters"
@@ -484,8 +534,9 @@ export function EvidenceReviewView() {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Assigned Section Codes (comma-separated)</label>
+                <label htmlFor="supervisor-sections" className="block text-slate-400 mb-1">Assigned Section Codes (comma-separated)</label>
                 <input
+                  id="supervisor-sections"
                   type="text"
                   placeholder="SEC_KRJ_SMQ, GZB-ALJN"
                   value={newSections}
@@ -505,13 +556,23 @@ export function EvidenceReviewView() {
               </button>
               <button
                 type="submit"
+                disabled={creating}
                 className="px-4 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs"
               >
-                Create Account
+                {creating ? 'Creating...' : 'Create Account'}
               </button>
             </div>
           </form>
         </Modal>
+      )}
+
+      {showUploadModal && (
+        <EvidenceUploadModal
+          onClose={() => setShowUploadModal(false)}
+          onUploaded={async () => {
+            await fetchData();
+          }}
+        />
       )}
     </div>
   );

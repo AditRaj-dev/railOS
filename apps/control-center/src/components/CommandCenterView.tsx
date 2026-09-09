@@ -17,12 +17,20 @@ import {
   Cpu
 } from 'lucide-react';
 
+import { QueryState } from './ui/QueryState';
+
 export const CommandCenterView: React.FC = () => {
   const router = useRouter();
-  const { data: liveAnalytics } = useAnalyticsSummary();
-  const { data: tasksData } = useMaintenanceTasks();
-  const { data: plansData } = useBlockPlans();
-  const { data: catalog } = useNetworkCatalog();
+  const analyticsQuery = useAnalyticsSummary();
+  const tasksQuery = useMaintenanceTasks();
+  const plansQuery = useBlockPlans();
+  const catalogQuery = useNetworkCatalog();
+
+  const liveAnalytics = analyticsQuery.data;
+  const tasksData = tasksQuery.data;
+  const plansData = plansQuery.data;
+  const catalog = catalogQuery.data;
+
   const { setSelectedTaskId, setSelectedBlockId } = useRailOSStore();
   const createEmergency = useCreateEmergency();
   const [emergencyId, setEmergencyId] = useState<string | null>(null);
@@ -56,8 +64,25 @@ export const CommandCenterView: React.FC = () => {
     );
   };
 
+  const isPrimaryLoading = tasksQuery.isLoading || plansQuery.isLoading || catalogQuery.isLoading;
+  const isPrimaryError = tasksQuery.isError || plansQuery.isError || catalogQuery.isError;
+  const primaryError = tasksQuery.error || plansQuery.error || catalogQuery.error;
+
   return (
     <div className="space-y-4">
+      <QueryState
+        isLoading={isPrimaryLoading}
+        isError={isPrimaryError}
+        error={primaryError}
+        onRetry={() => {
+          void analyticsQuery.refetch();
+          void tasksQuery.refetch();
+          void plansQuery.refetch();
+          void catalogQuery.refetch();
+        }}
+        loadingMessage="Loading operational command metrics and active plan…"
+        errorMessage="Failed to load command center operational state."
+      >
       {/* 5-Second Situation Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-2.5" aria-label="Situation summary">
         <MetricCard
@@ -319,6 +344,7 @@ export const CommandCenterView: React.FC = () => {
         </div>
 
       </div>
+      </QueryState>
     </div>
   );
 };

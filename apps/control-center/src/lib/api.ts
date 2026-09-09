@@ -104,6 +104,7 @@ export type DepartmentCode = 'ENGG' | 'SNT' | 'TRD';
 export type BlockRequestStatus =
   | 'DRAFT'
   | 'REQUESTED'
+  | 'READY'
   | 'ACCEPTED'
   | 'PLANNED'
   | 'REJECTED'
@@ -136,6 +137,7 @@ export interface BlockRequest {
   actor?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  allowedActions?: string[];
   provenance?: string | null;
   synthetic?: boolean;
   [key: string]: unknown;
@@ -431,13 +433,17 @@ function toAuthSession(result: AuthLoginResult): AuthSession {
 /** Attempt a single transparent refresh using the current session's refresh token. */
 async function tryRefreshSession(): Promise<boolean> {
   if (!authSession?.refreshToken) return false;
+  const previous = authSession;
   try {
-    const result = await refreshSession(authSession.refreshToken);
+    const result = await refreshSession(previous.refreshToken);
+    // A logout or a newer login wins over this older request's completion.
+    if (authSession !== previous) return authSession !== null;
     const next = toAuthSession(result);
     authSession = next;
     onSessionRefreshed?.(next);
     return true;
   } catch {
+    if (authSession !== previous) return authSession !== null;
     authSession = null;
     onSessionExpired?.();
     return false;
@@ -445,11 +451,11 @@ async function tryRefreshSession(): Promise<boolean> {
 }
 
 /**
- * Build request headers: a real Bearer token when a session is active and not
- * already known-expired, else the synthetic demo headers (unchanged fallback).
+ * Preserve real identity until the server accepts it or refreshes it. An expired
+ * access token must produce a 401, never silently change the actor to demo-user.
  */
 function getAuthHeaders(): Record<string, string> {
-  if (authSession && authSession.expiresAt > Date.now()) {
+  if (authSession) {
     return { Authorization: `Bearer ${authSession.accessToken}` };
   }
   return { 'X-RailOS-User': 'demo-user', 'X-RailOS-Role': activeRole };
@@ -650,8 +656,9 @@ export function normalizeBlockRequest(value: Record<string, unknown>): BlockRequ
     linkedTaskId: requestValue(value, 'linkedTaskId', 'linked_task_id') as string | null | undefined,
     plannedBlockId: requestValue(value, 'plannedBlockId', 'planned_block_id') as string | null | undefined,
     planId: requestValue(value, 'planId', 'plan_id') as string | null | undefined,
-    createdAt: requestValue(value, 'createdAt', 'created_at') as string | null | undefined,
-    updatedAt: requestValue(value, 'updatedAt', 'updated_at') as string | null | undefined,
+    createdAt: (requestValue(value, 'createdAt', 'created_at') ?? value.createdAtUtc) as string | null | undefined,
+    updatedAt: (requestValue(value, 'updatedAt', 'updated_at') ?? value.updatedAtUtc) as string | null | undefined,
+    allowedActions: Array.isArray(value.allowedActions) ? value.allowedActions.map(String) : [],
     provenance: value.provenance as string | null | undefined,
     synthetic: Boolean(value.synthetic),
   };
@@ -719,6 +726,20 @@ export async function createBlockRequest(payload: CreateBlockRequestPayload): Pr
   const data = await fetchApi<Record<string, unknown>>('/api/v1/block-requests', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+  return normalizeBlockRequest(data);
+}
+
+export type BlockRequestStatusUpdate = {
+  requestId: string;
+  status: Extract<BlockRequestStatus, 'READY' | 'REJECTED' | 'CANCELLED'>;
+  reason: string;
+};
+
+export async function updateBlockRequestStatus(payload: BlockRequestStatusUpdate): Promise<BlockRequest> {
+  const data = await fetchApi<Record<string, unknown>>(`/api/v1/block-requests/${encodeURIComponent(payload.requestId)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: payload.status, reason: payload.reason }),
   });
   return normalizeBlockRequest(data);
 }

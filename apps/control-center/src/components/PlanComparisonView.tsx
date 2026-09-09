@@ -7,6 +7,7 @@ import { getTokenDef, PLAN_STATUS_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { SanctionChainPanel } from './SanctionChainPanel';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
+import { QueryState } from './ui/QueryState';
 
 export function PlanComparisonView() {
   const plansQuery = useBlockPlans();
@@ -32,16 +33,16 @@ export function PlanComparisonView() {
         </div>
       </header>
 
-      {plansQuery.isLoading && (
-        <div className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-5 text-sm text-[var(--text-secondary)]" role="status">Loading plan candidates…</div>
-      )}
-
-      {plansQuery.isError && (
-        <div className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-4 text-sm text-[var(--status-critical-text)]" role="alert">
-          <p className="font-semibold">Plan API unavailable</p>
-          <p className="mt-1">{plansQuery.error.message}. Sanctioning requires an API-backed plan.</p>
-        </div>
-      )}
+      <QueryState
+        isLoading={plansQuery.isLoading}
+        isError={plansQuery.isError}
+        error={plansQuery.error}
+        onRetry={() => { void plansQuery.refetch(); }}
+        loadingMessage="Loading plan candidates…"
+        errorMessage={`Plan API unavailable: ${plansQuery.error?.message || 'Sanctioning requires an API-backed plan.'}`}
+      >
+        <span />
+      </QueryState>
 
       {plans.length > 0 ? (
         <section aria-labelledby="api-plan-list-title" className="space-y-3">

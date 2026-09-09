@@ -24,6 +24,7 @@ import {
   FileCheck2,
   AlertTriangle
 } from 'lucide-react';
+import { QueryState } from './ui/QueryState';
 
 export const BlockPlannerView: React.FC = () => {
   const router = useRouter();
@@ -36,7 +37,8 @@ export const BlockPlannerView: React.FC = () => {
   const [selectedMode, setSelectedMode] = useState<ObjectiveMode>('BALANCED');
   const { selectedBlockId, setSelectedBlockId } = useRailOSStore();
 
-  const { data: catalog } = useNetworkCatalog();
+  const catalogQuery = useNetworkCatalog();
+  const catalog = catalogQuery.data;
   const plansQuery = useBlockPlans();
   const ticketsQuery = useBlockRequests({ status: 'REQUESTED' });
   const generateMutation = useGeneratePlan();
@@ -142,6 +144,19 @@ export const BlockPlannerView: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <QueryState
+        isLoading={plansQuery.isLoading || catalogQuery.isLoading}
+        isError={plansQuery.isError || catalogQuery.isError}
+        error={plansQuery.error || catalogQuery.error}
+        onRetry={() => {
+          void plansQuery.refetch();
+          void catalogQuery.refetch();
+          void ticketsQuery.refetch();
+        }}
+        loadingMessage="Loading optimization plans and network catalog…"
+        errorMessage="Failed to load block planning models and active plan."
+      >
+      {/* Top Banner / Engine Config */}
       <div className="p-4 rounded border border-slate-800 bg-slate-900/90 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -498,6 +513,7 @@ export const BlockPlannerView: React.FC = () => {
           )}
         </div>
       </div>
+      </QueryState>
     </div>
   );
 };

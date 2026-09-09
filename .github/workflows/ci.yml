@@ -29,6 +29,10 @@ jobs:
         run: |
           pytest -q
 
+      - name: Verify design token distribution sync
+        run: |
+          python scripts/check_token_sync.py
+
   frontend-build:
     name: Control Center Frontend Build
     runs-on: ubuntu-latest

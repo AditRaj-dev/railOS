@@ -56,7 +56,7 @@ class RailOSTheme {
         ),
         bodySmall: TextStyle(
           color: RailOSTokens.text_muted,
-          fontSize: 12,
+          fontSize: 13,
           height: 1.4,
         ),
         labelLarge: TextStyle(
@@ -67,6 +67,11 @@ class RailOSTheme {
         labelMedium: TextStyle(
           color: RailOSTokens.text_secondary,
           fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        labelSmall: TextStyle(
+          color: RailOSTokens.text_muted,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
       ),

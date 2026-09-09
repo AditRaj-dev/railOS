@@ -21,16 +21,18 @@ interface EvidenceDetailModalProps {
 export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceDetailModalProps) {
   const [reviewNotes, setReviewNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleDecision = async (decision: 'ACCEPT' | 'REJECT') => {
-    if (!reviewNotes.trim()) return;
+    if (submitting || !reviewNotes.trim()) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await reviewEvidence(evidence.evidenceId, decision, reviewNotes);
+      await reviewEvidence(evidence.evidenceId, decision, reviewNotes.trim());
       onReviewed();
       onClose();
     } catch (err) {
-      alert('Failed to submit review: ' + String(err));
+      setError('Failed to submit review. Your rationale is preserved; retry the decision. ' + String(err));
     } finally {
       setSubmitting(false);
     }
@@ -63,14 +65,14 @@ export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceD
                 <Camera className="w-10 h-10 mx-auto text-slate-600 mb-2" />
                 <p className="font-mono text-xs">Simulated Presigned Evidence Media</p>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Permanent RailOS Watermark Strip embedded in proof derivative
+                  Permanent Railblock watermark strip embedded in proof derivative
                 </p>
               </div>
             )}
 
             {/* Simulated Permanent Watermark Strip */}
             <div className="w-full mt-3 p-2 bg-slate-900/90 border border-sky-500/40 rounded font-mono text-[10px] text-sky-300 flex flex-wrap justify-between gap-2">
-              <span>RAILOS PROOF // {evidence.evidenceId.slice(0, 8)}</span>
+              <span>RAILBLOCK PROOF // {evidence.evidenceId.slice(0, 8)}</span>
               <span>UTC: {evidence.captureTimeUtc}</span>
               <span>
                 LAT: {evidence.startLatitude?.toFixed(5)} LON:{' '}
@@ -87,7 +89,6 @@ export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceD
             <div className="text-slate-400 font-bold uppercase flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-sky-400" /> Geospatial Verification
             </div>
-            <div>Target Radius: 100.0 m</div>
             <div>Distance to Target: {evidence.distanceToTargetMeters?.toFixed(1) || '--'} m</div>
             <div>GPS Accuracy: ±{evidence.gpsAccuracyMeters} m</div>
             <div>
@@ -106,30 +107,33 @@ export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceD
               <Lock className="w-3.5 h-3.5 text-emerald-400" /> Cryptographic Integrity
             </div>
             <div className="truncate">
-              Original SHA-256: <span className="text-slate-300">{evidence.originalSha256 || 'Calculated'}</span>
+              Original SHA-256: <span className="text-slate-300">{evidence.originalSha256 || 'Unavailable'}</span>
             </div>
             <div className="truncate">
-              Proof SHA-256: <span className="text-slate-300">{evidence.proofSha256 || 'Calculated'}</span>
+              Proof SHA-256: <span className="text-slate-300">{evidence.proofSha256 || 'Unavailable'}</span>
             </div>
             <div>
               Ed25519 Canonical Signature:{' '}
               {evidence.ed25519Signature ? (
-                <span className="text-emerald-400 font-bold">VERIFIED AUTHENTIC</span>
+                <span className="text-emerald-400 font-bold">SIGNATURE PRESENT</span>
               ) : (
                 <span className="text-amber-400">PENDING SIGNATURE</span>
               )}
             </div>
-            <div>Immutable Audit Chain: Preserved in PostgreSQL</div>
           </div>
         </div>
 
         {/* Control Officer Decision Actions (if flagged) */}
         {evidence.status === 'FLAGGED_REVIEW' && (
           <div className="p-4 bg-purple-950/30 border border-purple-800/60 rounded-lg space-y-3">
-            <div className="text-xs font-bold font-mono text-purple-300 uppercase">
+            <label htmlFor="evidence-review-notes" className="block text-xs font-bold font-mono text-purple-300 uppercase">
               Control Officer Decision & Mandatory Rationale
-            </div>
+            </label>
+            {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
             <textarea
+              id="evidence-review-notes"
+              required
+              disabled={submitting}
               value={reviewNotes}
               onChange={(e) => setReviewNotes(e.target.value)}
               placeholder="Enter mandatory operational justification for accepting or rejecting this evidence exception..."

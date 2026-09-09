@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RailOS Control Center",
+  title: "Railblock Control Center",
   description: "Synthetic railway operations control center for corridor planning and response.",
 };
 

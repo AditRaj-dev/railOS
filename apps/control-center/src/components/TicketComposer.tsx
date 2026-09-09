@@ -66,11 +66,11 @@ function pretty(value: string | undefined | null, fallback = 'Not set') {
   return value && value.trim() ? value.replaceAll('_', ' ') : fallback;
 }
 
-function createPayload(draft: TicketDraft): CreateBlockRequestPayload {
+function createPayload(draft: TicketDraft, corridorId: string): CreateBlockRequestPayload {
   const department = draft.department as DepartmentCode;
   return {
     department,
-    corridorId: 'GZB-ALJN',
+    corridorId,
     sectionId: draft.sectionId,
     track: draft.track,
     kmStart: Number(draft.kmStart),
@@ -82,20 +82,24 @@ function createPayload(draft: TicketDraft): CreateBlockRequestPayload {
     blockType: draft.blockType,
     // requiresPTW/requiresT351/requiresCorrespondenceTest are server-derived
     // from taskType and must not be sent — BlockRequestCreate is extra="forbid".
-    requestedStart: dateToMinute(DEMO_EPOCH_ISO, new Date(draft.requestedStart)),
-    requestedEnd: dateToMinute(DEMO_EPOCH_ISO, new Date(draft.requestedEnd)),
+    requestedStart: dateToMinute(DEMO_EPOCH_ISO, new Date(`${draft.requestedStart}+05:30`)),
+    requestedEnd: dateToMinute(DEMO_EPOCH_ISO, new Date(`${draft.requestedEnd}+05:30`)),
   };
 }
 
 function errorDetails(error: RailOSApiError): Record<string, string> {
   if (!error.details || typeof error.details !== 'object') return {};
   const details = error.details as Record<string, unknown>;
+  const normalizeField = (key: string) => key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+  if (typeof details.field === 'string') {
+    return Object.fromEntries(details.field.split('/').map((field) => [normalizeField(field), error.message]));
+  }
   const fields = details.fields && typeof details.fields === 'object'
     ? details.fields as Record<string, unknown>
     : details;
   return Object.fromEntries(Object.entries(fields)
     .filter(([, value]) => typeof value === 'string')
-    .map(([key, value]) => [key.replaceAll('_', ''), String(value)]));
+    .map(([key, value]) => [normalizeField(key), String(value)]));
 }
 
 /** Which composer step a server-named field belongs to, for the jump-back. */
@@ -116,6 +120,7 @@ const FIELD_STEPS: Record<string, ComposerStep> = {
 
 export interface TicketComposerProps {
   initialDepartment?: DepartmentCode;
+  lockedDepartment?: DepartmentCode;
   onSubmitted?: (request: BlockRequest) => void;
 }
 
@@ -123,8 +128,8 @@ export interface TicketComposerProps {
  * A deterministic, chat-assisted request flow. The compact prompt is only a
  * guide; the record beside it is always the authoritative, editable form.
  */
-export function TicketComposer({ initialDepartment, onSubmitted }: TicketComposerProps) {
-  const [draft, setDraft] = useState<TicketDraft>(() => initialDraft(initialDepartment));
+export function TicketComposer({ initialDepartment, lockedDepartment, onSubmitted }: TicketComposerProps) {
+  const [draft, setDraft] = useState<TicketDraft>(() => initialDraft(lockedDepartment ?? initialDepartment));
   const [stepIndex, setStepIndex] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   // The server's own complaints live apart from the client-side ones: they are
@@ -173,6 +178,7 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
     const section = sections.find((candidate) => candidate.sectionId === draft.sectionId);
     return (section?.tracks as string[] | undefined) || ['UP', 'DOWN'];
   }, [sections, draft.sectionId]);
+  const selectedSection = sections.find((section) => section.sectionId === draft.sectionId);
 
   const update = <Key extends keyof TicketDraft>(key: Key, value: TicketDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -194,14 +200,16 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
       else if (draft.sectionId && !sectionTracks.includes(draft.track)) {
         errors.track = `${draft.sectionId} has no ${draft.track} track. Choose ${sectionTracks.join(' or ')}.`;
       }
-      if (!draft.kmStart || Number.isNaN(Number(draft.kmStart))) errors.kmStart = 'Enter the start kilometre.';
-      if (!draft.kmEnd || Number.isNaN(Number(draft.kmEnd))) errors.kmEnd = 'Enter the end kilometre.';
+      if (!draft.kmStart || !Number.isFinite(Number(draft.kmStart)) || Number(draft.kmStart) < 0) errors.kmStart = 'Enter a start kilometre of zero or greater.';
+      if (!draft.kmEnd || !Number.isFinite(Number(draft.kmEnd)) || Number(draft.kmEnd) <= 0) errors.kmEnd = 'Enter an end kilometre greater than zero.';
       if (draft.kmStart && draft.kmEnd && Number(draft.kmEnd) < Number(draft.kmStart)) errors.kmEnd = 'End kilometre must be the same as or later than the start kilometre.';
     }
     if (target === 'work') {
       if (!draft.taskType) errors.taskType = 'Choose the work type.';
       if (!draft.severity || Number(draft.severity) < 1 || Number(draft.severity) > 10) errors.severity = 'Choose a severity from 1 to 10.';
-      if (draft.taskType && assetChoiceRequired) {
+      if (assetsQuery.isLoading) errors.assetId = 'Wait for the asset inventory to finish loading.';
+      else if (assetsQuery.isError) errors.assetId = 'Asset inventory unavailable. Retry loading it before continuing.';
+      else if (draft.taskType && assetChoiceRequired) {
         if (candidateAssets.length === 0) {
           errors.assetId = `No ${pretty(selectedTaskType?.assetType)} asset is mapped on ${draft.sectionId || 'this section'} ${draft.track}. Choose another section, track, or work type.`;
         } else if (!draft.assetId) {
@@ -210,16 +218,20 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
       }
     }
     if (target === 'block') {
-      if (!draft.estimatedDuration || Number(draft.estimatedDuration) <= 0) errors.estimatedDuration = 'Enter a duration greater than zero minutes.';
+      if (!Number.isInteger(Number(draft.estimatedDuration)) || Number(draft.estimatedDuration) <= 0) errors.estimatedDuration = 'Enter a duration in whole minutes greater than zero.';
       else if (minDuration > 0 && Number(draft.estimatedDuration) < minDuration) {
         errors.estimatedDuration = `${pretty(draft.taskType)} needs at least ${minDuration} minutes under HC-002.`;
       }
       if (!draft.blockType) errors.blockType = 'Choose the block requirement.';
     }
     if (target === 'window') {
+      const start = new Date(`${draft.requestedStart}+05:30`).getTime();
+      const end = new Date(`${draft.requestedEnd}+05:30`).getTime();
       if (!draft.requestedStart) errors.requestedStart = 'Enter the earliest requested start.';
+      else if (!Number.isFinite(start) || start < new Date(DEMO_EPOCH_ISO).getTime()) errors.requestedStart = 'Choose a start on or after 09 Sep 2026, 00:00 IST, the demo planning horizon.';
       if (!draft.requestedEnd) errors.requestedEnd = 'Enter the latest requested end.';
-      if (draft.requestedStart && draft.requestedEnd && new Date(draft.requestedEnd) <= new Date(draft.requestedStart)) {
+      else if (!Number.isFinite(end)) errors.requestedEnd = 'Enter a valid requested end.';
+      if (Number.isFinite(start) && Number.isFinite(end) && end <= start) {
         errors.requestedEnd = 'The requested end must be after the requested start.';
       }
     }
@@ -250,14 +262,15 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
     }
     setSubmissionError(null);
     setServerErrors([]);
-    createMutation.mutate(createPayload(draft), {
+    createMutation.mutate(createPayload(draft, selectedSection?.corridorId || 'GZB-ALJN'), {
       onSuccess: (request) => {
         setSubmitted(request);
         onSubmitted?.(request);
       },
       onError: (error) => {
         const serverFields = errorDetails(error);
-        setServerErrors(Object.values(serverFields));
+        setFieldErrors(serverFields);
+        setServerErrors([]);
         setSubmissionError(error.message);
         const offending = Object.keys(serverFields).map((key) => FIELD_STEPS[key]).find(Boolean);
         if (offending) setStepIndex(STEPS.findIndex((item) => item.id === offending));
@@ -267,7 +280,7 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
   };
 
   const reset = () => {
-    setDraft(initialDraft(initialDepartment));
+    setDraft(initialDraft(lockedDepartment ?? initialDepartment));
     setStepIndex(0);
     setFieldErrors({});
     setServerErrors([]);
@@ -285,9 +298,9 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
             <p className="mt-1 text-sm text-[var(--text-primary)]" role="status" aria-live="polite">
               Ticket <span className="font-mono font-bold">{submitted.requestId}</span> created linked task <span className="font-mono font-bold">{submitted.linkedTaskId || 'pending assignment'}</span>.
             </p>
-            <p className="mt-2 text-xs text-[var(--text-secondary)]">{submitted.provenance || 'Synthetic Hackathon Simulation'} · This is requested demand, not an approved possession.</p>
+            <p className="mt-2 text-xs text-[var(--text-secondary)]">{typeof submitted.provenance === 'object' && submitted.provenance ? String((submitted.provenance as { label?: string }).label || 'Synthetic Hackathon Simulation') : String(submitted.provenance || 'Synthetic Hackathon Simulation')} · This is requested demand, not an approved possession.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href="/planner" className="inline-flex min-h-11 items-center rounded border border-[var(--status-ok-border)] px-3 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent)]">Open Block Finder</Link>
+              <Link href={submitted.linkedTaskId ? `/planner?taskId=${encodeURIComponent(submitted.linkedTaskId)}` : '/planner'} className="inline-flex min-h-11 items-center rounded border border-[var(--status-ok-border)] px-3 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent)]">Open Block Finder</Link>
               <Link href="/timeline" className="inline-flex min-h-11 items-center rounded border border-[var(--status-ok-border)] px-3 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent)]">Open Operational Gantt</Link>
               <button type="button" onClick={reset} className="inline-flex min-h-11 items-center gap-2 rounded border border-[var(--status-ok-border)] px-3 text-sm font-semibold text-[var(--text-primary)] hover:border-[var(--accent)]"><RotateCcw className="h-4 w-4" aria-hidden="true" /> New request</button>
             </div>
@@ -297,7 +310,7 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
     );
   }
 
-  const errorMessages = [...Object.values(fieldErrors), ...serverErrors, ...(submissionError ? [submissionError] : [])];
+  const errorMessages = [...new Set([...Object.values(fieldErrors), ...serverErrors, ...(submissionError ? [submissionError] : [])])];
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,0.8fr)]" aria-labelledby="ticket-composer-title">
       <div className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-4 md:p-5">
@@ -316,11 +329,16 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
         {errorMessages.length > 0 && <div ref={errorSummaryRef} tabIndex={-1} className="mt-4 rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3 text-sm text-[var(--status-critical-text)]" role="alert"><div className="flex items-center gap-2 font-semibold"><CircleAlert className="h-4 w-4" aria-hidden="true" /> Correct the highlighted fields</div><ul className="mt-2 list-disc space-y-1 pl-5">{errorMessages.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}</ul></div>}
 
         <form className="mt-5" onSubmit={(event) => { event.preventDefault(); step.id === 'review' ? submit() : advance(); }} noValidate>
-          <fieldset>
+          {[
+            { label: 'Section catalogue', query: catalogQuery },
+            { label: 'Work type catalogue', query: taskTypeQuery },
+            { label: 'Asset inventory', query: assetsQuery },
+          ].filter(({ query }) => query.isError).map(({ label, query }) => <div key={label} role="alert" className="mb-4 text-sm text-[var(--status-critical-text)]">{label} unavailable. <button type="button" className="min-h-11 underline" disabled={query.isFetching} onClick={() => void query.refetch()}>Retry {label.toLowerCase()}</button></div>)}
+          <fieldset disabled={createMutation.isPending}>
             <legend className="text-base font-semibold text-[var(--text-primary)]">{step.prompt}</legend>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">Answers are visible in the operational record at every step.</p>
 
-            {step.id === 'department' && <div className="mt-4 grid gap-3 md:grid-cols-3">{DEPARTMENTS.map((department) => <label key={department.code} className={`cursor-pointer rounded border p-3 ${draft.department === department.code ? 'border-[var(--accent)] bg-[var(--status-caution-bg)]' : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]'}`}><input className="mr-2" type="radio" name="department" value={department.code} checked={draft.department === department.code} onChange={() => { update('department', department.code); update('taskType', ''); }} /> <span className="font-mono text-sm font-bold text-[var(--text-primary)]">{department.label}</span><span className="mt-2 block text-xs text-[var(--text-secondary)]">{department.description}</span></label>)}</div>}
+            {step.id === 'department' && <div className="mt-4 grid gap-3 md:grid-cols-3">{DEPARTMENTS.filter((department) => !lockedDepartment || department.code === lockedDepartment).map((department) => <label key={department.code} className={`cursor-pointer rounded border p-3 ${draft.department === department.code ? 'border-[var(--accent)] bg-[var(--status-caution-bg)]' : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]'}`}><input className="mr-2" type="radio" name="department" value={department.code} checked={draft.department === department.code} onChange={() => { update('department', department.code); update('taskType', ''); update('assetId', ''); }} /> <span className="font-mono text-sm font-bold text-[var(--text-primary)]">{department.label}</span><span className="mt-2 block text-xs text-[var(--text-secondary)]">{department.description}</span></label>)}</div>}
 
             {step.id === 'location' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Affected section" error={fieldErrors.sectionId}><select value={draft.sectionId} onChange={(event) => { const nextSection = sections.find((candidate) => candidate.sectionId === event.target.value); update('sectionId', event.target.value); update('assetId', ''); const tracks = (nextSection?.tracks as string[] | undefined) || []; if (tracks.length && !tracks.includes(draft.track)) update('track', tracks[0]); }} aria-describedby={fieldErrors.sectionId ? 'sectionId-error' : undefined}><option value="">Choose section</option>{sections.map((section) => <option key={section.sectionId} value={section.sectionId}>{section.name} ({section.sectionId})</option>)}</select>{catalogQuery.isLoading && <p className="mt-1 text-xs text-[var(--text-muted)]" role="status">Loading section catalogue…</p>}</Field><Field label="Track" error={fieldErrors.track}><select value={draft.track} onChange={(event) => { update('track', event.target.value); update('assetId', ''); }}>{sectionTracks.map((track) => <option key={track} value={track}>{track.charAt(0) + track.slice(1).toLowerCase()}</option>)}</select></Field><Field label="Start kilometre" error={fieldErrors.kmStart}><input type="number" step="0.001" value={draft.kmStart} onChange={(event) => update('kmStart', event.target.value)} /></Field><Field label="End kilometre" error={fieldErrors.kmEnd}><input type="number" step="0.001" value={draft.kmEnd} onChange={(event) => update('kmEnd', event.target.value)} /></Field></div>}
 
@@ -328,7 +346,7 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
 
             {step.id === 'block' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Estimated duration (minutes)" error={fieldErrors.estimatedDuration}><input type="number" min={minDuration || 1} value={draft.estimatedDuration} onChange={(event) => update('estimatedDuration', event.target.value)} aria-describedby={minDuration > 0 ? 'duration-floor' : undefined} />{minDuration > 0 && <span id="duration-floor" className="mt-1 block text-xs font-normal text-[var(--text-secondary)]">{pretty(draft.taskType)} needs a minimum block of {minDuration} minutes (HC-002).</span>}</Field><Field label="Block requirement" error={fieldErrors.blockType}><select value={draft.blockType} onChange={(event) => update('blockType', event.target.value)}><option value="TRAFFIC">Traffic block</option><option value="POWER">Power block / PTW</option><option value="INTEGRATED">Integrated traffic + power</option><option value="DISCONNECTION">S&T disconnection / T-351</option></select></Field><p className="sm:col-span-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">{draft.department === 'SNT' ? 'S&T work will carry the required T/351 and correspondence-test flags.' : draft.department === 'TRD' ? 'TRD work will carry PTW and OHE isolation requirements.' : 'Block Finder will retain all resulting safety warnings; submission does not approve a possession.'}</p></div>}
 
-            {step.id === 'window' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Earliest requested start" error={fieldErrors.requestedStart}><input type="datetime-local" value={draft.requestedStart} onChange={(event) => update('requestedStart', event.target.value)} /></Field><Field label="Latest requested end" error={fieldErrors.requestedEnd}><input type="datetime-local" value={draft.requestedEnd} onChange={(event) => update('requestedEnd', event.target.value)} /></Field><p className="sm:col-span-2 text-xs text-[var(--text-secondary)]">This is a planning preference. The optimizer may return a different candidate window or an unassigned warning.</p></div>}
+            {step.id === 'window' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Earliest requested start" error={fieldErrors.requestedStart}><input type="datetime-local" min="2026-09-09T00:00" value={draft.requestedStart} onChange={(event) => update('requestedStart', event.target.value)} /></Field><Field label="Latest requested end" error={fieldErrors.requestedEnd}><input type="datetime-local" min="2026-09-09T00:00" value={draft.requestedEnd} onChange={(event) => update('requestedEnd', event.target.value)} /></Field><p className="sm:col-span-2 text-xs text-[var(--text-secondary)]">Times are in IST (UTC+05:30), from the demo horizon on 09 Sep 2026. This is a planning preference. The optimizer may return a different candidate window or an unassigned warning.</p></div>}
 
             {step.id === 'review' && <div className="mt-4 rounded border border-[var(--status-caution-border)] bg-[var(--status-caution-bg)] p-4 text-sm text-[var(--text-primary)]"><div className="flex items-start gap-2"><ClipboardCheck className="mt-0.5 h-5 w-5 text-[var(--status-caution-fg)]" aria-hidden="true" /><div><p className="font-semibold">Ready to send to Block Manager</p><p className="mt-1 text-xs text-[var(--text-secondary)]">A canonical maintenance task will be created and linked. This request remains <strong>REQUESTED</strong> until the existing planning and sanction workflow acts on it.</p></div></div></div>}
           </fieldset>
@@ -336,7 +354,7 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
         </form>
       </div>
 
-      <StructuredPreview draft={draft} onEdit={(target) => setStepIndex(STEPS.findIndex((item) => item.id === target))} />
+      <StructuredPreview draft={draft} disabled={createMutation.isPending} onEdit={(target) => setStepIndex(STEPS.findIndex((item) => item.id === target))} />
     </section>
   );
 }
@@ -346,7 +364,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   return <label className="block text-sm font-semibold text-[var(--text-primary)]">{label}<span className="mt-1 block [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded [&_input]:border [&_input]:border-[var(--border-strong)] [&_input]:bg-[var(--bg-surface)] [&_input]:px-3 [&_input]:text-[var(--text-primary)] [&_select]:min-h-11 [&_select]:w-full [&_select]:rounded [&_select]:border [&_select]:border-[var(--border-strong)] [&_select]:bg-[var(--bg-surface)] [&_select]:px-3 [&_select]:text-[var(--text-primary)]">{children}</span>{error && <span id={`${id}-error`} className="mt-1 block text-xs text-[var(--status-critical-text)]">{error}</span>}</label>;
 }
 
-function StructuredPreview({ draft, onEdit }: { draft: TicketDraft; onEdit: (step: ComposerStep) => void }) {
+function StructuredPreview({ draft, disabled, onEdit }: { draft: TicketDraft; disabled: boolean; onEdit: (step: ComposerStep) => void }) {
   const rows: Array<{ label: string; value: string; step: ComposerStep }> = [
     { label: 'Department', value: pretty(draft.department), step: 'department' },
     { label: 'Location', value: draft.sectionId ? `${draft.sectionId} · ${draft.track} · km ${draft.kmStart || '?'}–${draft.kmEnd || '?'}` : 'Not set', step: 'location' },
@@ -354,5 +372,5 @@ function StructuredPreview({ draft, onEdit }: { draft: TicketDraft; onEdit: (ste
     { label: 'Block need', value: draft.estimatedDuration ? `${draft.estimatedDuration} min · ${pretty(draft.blockType)}` : 'Not set', step: 'block' },
     { label: 'Requested window', value: draft.requestedStart && draft.requestedEnd ? `${draft.requestedStart.replace('T', ' ')} → ${draft.requestedEnd.replace('T', ' ')}` : 'Not set', step: 'window' },
   ];
-  return <aside className="h-fit rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-4" aria-labelledby="ticket-preview-title"><div className="flex items-center justify-between gap-2"><div><p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--accent)]">Structured record</p><h2 id="ticket-preview-title" className="mt-1 text-base font-bold text-[var(--text-primary)]">Block Finder input preview</h2></div><span className="rounded border border-[var(--status-caution-border)] bg-[var(--status-caution-bg)] px-2 py-1 font-mono text-[10px] font-bold text-[var(--status-caution-text)]">REQUESTED</span></div><p className="mt-2 text-xs text-[var(--text-secondary)]">Visible throughout intake. Edit any captured value before submission.</p><dl className="mt-4 divide-y divide-[var(--border-subtle)]">{rows.map((row) => <div key={row.label} className="py-3"><dt className="text-xs font-mono uppercase tracking-wide text-[var(--text-muted)]">{row.label}</dt><dd className="mt-1 break-words text-sm text-[var(--text-primary)]">{row.value}</dd><button type="button" onClick={() => onEdit(row.step)} className="mt-2 min-h-9 text-xs font-semibold text-[var(--accent)] underline underline-offset-4">Edit {row.label.toLowerCase()}</button></div>)}</dl><p className="mt-4 rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">Synthetic API connected.</strong> Requests are deterministic demo data and do not grant operating authority.</p></aside>;
+  return <aside className="h-fit rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-4" aria-labelledby="ticket-preview-title"><div className="flex items-center justify-between gap-2"><div><p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-[var(--accent)]">Structured record</p><h2 id="ticket-preview-title" className="mt-1 text-base font-bold text-[var(--text-primary)]">Block Finder input preview</h2></div><span className="rounded border border-[var(--status-caution-border)] bg-[var(--status-caution-bg)] px-2 py-1 font-mono text-[10px] font-bold text-[var(--status-caution-text)]">REQUESTED</span></div><p className="mt-2 text-xs text-[var(--text-secondary)]">Visible throughout intake. Edit any captured value before submission.</p><dl className="mt-4 divide-y divide-[var(--border-subtle)]">{rows.map((row) => <div key={row.label} className="py-3"><dt className="text-xs font-mono uppercase tracking-wide text-[var(--text-muted)]">{row.label}</dt><dd className="mt-1 break-words text-sm text-[var(--text-primary)]">{row.value}</dd><button type="button" disabled={disabled} onClick={() => onEdit(row.step)} className="mt-2 min-h-9 text-xs font-semibold text-[var(--accent)] underline underline-offset-4">Edit {row.label.toLowerCase()}</button></div>)}</dl><p className="mt-4 rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]"><strong className="text-[var(--text-primary)]">Synthetic API connected.</strong> Requests are deterministic demo data and do not grant operating authority.</p></aside>;
 }

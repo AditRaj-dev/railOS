@@ -65,9 +65,12 @@ function mapServerTask(item: Record<string, unknown>): MaintenanceTask {
   };
 }
 
+import { QueryState } from './ui/QueryState';
+
 export const MaintenanceView: React.FC = () => {
   const { selectedTaskId, setSelectedTaskId } = useRailOSStore();
-  const { data: serverTasksResponse, isLoading: isLoadingServerTasks } = useMaintenanceTasks();
+  const tasksQuery = useMaintenanceTasks();
+  const serverTasksResponse = tasksQuery.data;
 
   const effectiveTasks: MaintenanceTask[] = useMemo(() => {
     const raw = serverTasksResponse?.tasks;
@@ -98,6 +101,14 @@ export const MaintenanceView: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <QueryState
+        isLoading={tasksQuery.isLoading}
+        isError={tasksQuery.isError}
+        error={tasksQuery.error}
+        onRetry={() => { void tasksQuery.refetch(); }}
+        loadingMessage="Loading maintenance defects and backlog…"
+        errorMessage="Failed to load maintenance defect database."
+      >
       {/* Search & Filter Bar */}
       <div className="p-3 rounded border border-slate-800 bg-slate-900/80 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1 max-w-md">
@@ -154,12 +165,12 @@ export const MaintenanceView: React.FC = () => {
               borderColor: `var(--status-ok-border)`,
             }}
           >
-            <Database className="w-3 h-3" /> {isLoadingServerTasks ? 'Loading…' : `Live Backend (${effectiveTasks.length})`}
+            <Database className="w-3 h-3" /> {tasksQuery.isLoading ? 'Loading…' : `Live Backend (${effectiveTasks.length})`}
           </span>
         </div>
       </div>
 
-      {!isLoadingServerTasks && effectiveTasks.length === 0 ? (
+      {!tasksQuery.isLoading && effectiveTasks.length === 0 ? (
         <div className="p-8 text-center rounded border border-dashed border-slate-800 text-xs font-mono text-slate-500">
           No maintenance tasks reported by the API.
         </div>
@@ -316,6 +327,7 @@ export const MaintenanceView: React.FC = () => {
 
       </div>
       )}
+      </QueryState>
     </div>
   );
 };

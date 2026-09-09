@@ -298,6 +298,24 @@ export function useCreateBlockRequest(): UseMutationResult<
   });
 }
 
+export function useUpdateBlockRequestStatus(): UseMutationResult<
+  api.BlockRequest,
+  api.RailOSApiError,
+  api.BlockRequestStatusUpdate
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.updateBlockRequestStatus,
+    onSuccess: (request) => {
+      queryClient.setQueryData(queryKeys.blockRequests.detail(request.requestId), request);
+      queryClient.invalidateQueries({ queryKey: queryKeys.blockRequests.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.maintenance.tasks });
+      queryClient.invalidateQueries({ queryKey: queryKeys.planning.blockPlans });
+      queryClient.invalidateQueries({ queryKey: queryKeys.planning.blockWindows });
+    },
+  });
+}
+
 // ============================================================================
 // Planning queries
 // ============================================================================

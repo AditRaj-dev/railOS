@@ -2,11 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { AlertCircle, Eye, RefreshCw, Smartphone } from 'lucide-react';
+import { Eye, RefreshCw, Smartphone } from 'lucide-react';
 import { useMyPossessions } from '../lib/queries';
 import { StatusChip } from './StatusChip';
 import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
+import { QueryState } from './ui/QueryState';
 
 function formatUtc(value?: string | null): string {
   if (!value) return '—';
@@ -33,7 +34,7 @@ export const FieldPwaView: React.FC = () => {
             <p className="text-[11px] font-mono uppercase tracking-[0.18em] text-amber-300">Field operations</p>
             <h1 id="field-monitor-title" className="mt-1 text-lg font-semibold text-white">Read-only field monitor</h1>
             <p className="mt-1 max-w-3xl text-sm text-slate-400">
-              Observe possession windows, safety state, and handback readiness. Field updates are made in the Field Crew app and arrive here from the RailOS API.
+              Observe possession windows, safety state, and handback readiness. Field updates are made in the Field Crew app and arrive here from the Railblock API.
             </p>
           </div>
         </div>
@@ -53,13 +54,16 @@ export const FieldPwaView: React.FC = () => {
         <span className="ml-auto font-mono text-slate-500">{possessions.data?.count ?? 0} possessions</span>
       </div>
 
-      {possessions.isLoading && <p className="rounded border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300" role="status">Loading field state…</p>}
-      {possessions.isError && (
-        <div className="flex items-start gap-2 rounded border border-red-900/80 bg-red-950/40 p-4 text-sm text-red-200" role="alert">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>Field state could not be loaded. {possessions.error?.message || 'Try again.'}</span>
-        </div>
-      )}
+      <QueryState
+        isLoading={possessions.isLoading}
+        isError={possessions.isError}
+        error={possessions.error}
+        onRetry={() => { void possessions.refetch(); }}
+        loadingMessage="Loading field state…"
+        errorMessage={`Field state could not be loaded: ${possessions.error?.message || 'Try again.'}`}
+      >
+        <span />
+      </QueryState>
 
       {possessions.data && (
         <section className="rounded border border-slate-800 bg-slate-950 p-4" aria-labelledby="field-possession-title">

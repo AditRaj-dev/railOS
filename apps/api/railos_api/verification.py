@@ -98,6 +98,8 @@ class EvidenceVerificationService:
                 flag_reasons.append(f"Failed to retrieve proof media object: {e}")
 
         # 2. Media format integrity checks
+        if not orig_bytes:
+            flag_reasons.append("Original media is missing or empty")
         if item.kind == EvidenceKind.PHOTO:
             if orig_bytes and not orig_bytes.startswith(b"\xff\xd8\xff"):
                 flag_reasons.append("Original file is not a valid JPEG")

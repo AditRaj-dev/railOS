@@ -9,14 +9,20 @@ import { DEMO_EPOCH_ISO, formatMinute } from '@/lib/time';
 import { toDisplayBlock, toDisplayTrain, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import { DepartmentBadge } from './RailwayComponents';
 import { Clock, Train, Shield, Ticket } from 'lucide-react';
+import { QueryState } from './ui/QueryState';
 
 export const TimelineGanttView: React.FC = () => {
   const router = useRouter();
   const { setSelectedBlockId } = useRailOSStore();
-  const { data: catalog } = useNetworkCatalog();
-  const { data: plansData } = useBlockPlans();
-  const { data: trainsData } = useTrains();
-  const { data: ticketsData } = useBlockRequests({ status: 'REQUESTED' });
+  const catalogQuery = useNetworkCatalog();
+  const plansQuery = useBlockPlans();
+  const trainsQuery = useTrains();
+  const ticketsQuery = useBlockRequests({ status: 'REQUESTED' });
+
+  const catalog = catalogQuery.data;
+  const plansData = plansQuery.data;
+  const trainsData = trainsQuery.data;
+  const ticketsData = ticketsQuery.data;
 
   const hours = ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
   const startHour = 12;
@@ -83,10 +89,23 @@ export const TimelineGanttView: React.FC = () => {
         </div>
       </div>
 
-      <div className="p-4 rounded border border-slate-800 bg-slate-950 overflow-x-auto">
-        <div className="min-w-[840px] space-y-4">
+      <QueryState
+        isLoading={plansQuery.isLoading || trainsQuery.isLoading || catalogQuery.isLoading}
+        isError={plansQuery.isError || trainsQuery.isError || catalogQuery.isError}
+        error={plansQuery.error || trainsQuery.error || catalogQuery.error}
+        onRetry={() => {
+          void plansQuery.refetch();
+          void trainsQuery.refetch();
+          void catalogQuery.refetch();
+          void ticketsQuery.refetch();
+        }}
+        loadingMessage="Loading operational plan and train movements…"
+        errorMessage="Failed to load timeline and possession data."
+      >
+        <div className="p-4 rounded border border-slate-800 bg-slate-950 overflow-x-auto">
+          <div className="min-w-[840px] space-y-4">
 
-          <div className="grid grid-cols-6 border-b border-slate-800 pb-2 text-xs font-mono text-slate-400">
+            <div className="grid grid-cols-6 border-b border-slate-800 pb-2 text-xs font-mono text-slate-400">
             {hours.slice(0, -1).map((h) => (
               <div key={h} className="border-l border-slate-800 pl-2">
                 {h}
@@ -256,6 +275,7 @@ export const TimelineGanttView: React.FC = () => {
 
         </div>
       </div>
+      </QueryState>
     </div>
   );
 };

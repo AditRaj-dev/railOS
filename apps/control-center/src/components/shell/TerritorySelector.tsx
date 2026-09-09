@@ -53,12 +53,12 @@ function TerritorySelectorInner() {
   return (
     <div className="flex items-center gap-2 text-xs font-mono">
       <div className="flex items-center gap-1">
-        <label htmlFor="zone-select" className="text-slate-400">Zone:</label>
+        <label htmlFor="zone-select" className="text-[var(--text-muted)]">Zone:</label>
         <select
           id="zone-select"
           value={zone}
           onChange={(e) => handleZoneChange(e.target.value)}
-          className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-100 hover:border-slate-600 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/50 cursor-pointer"
+          className="px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]/50 cursor-pointer"
         >
           {zones.length > 0 ? (
             zones.map(z => (
@@ -78,13 +78,13 @@ function TerritorySelectorInner() {
       </div>
 
       <div className="flex items-center gap-1">
-        <ChevronDown className="w-3 h-3 text-slate-600" />
-        <label htmlFor="division-select" className="text-slate-400">Division:</label>
+        <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+        <label htmlFor="division-select" className="text-[var(--text-muted)]">Division:</label>
         <select
           id="division-select"
           value={division}
           onChange={(e) => handleDivisionChange(e.target.value)}
-          className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-100 hover:border-slate-600 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/50 cursor-pointer"
+          className="px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]/50 cursor-pointer"
         >
           {divisions.length > 0 ? (
             divisions.map(d => (
@@ -100,13 +100,13 @@ function TerritorySelectorInner() {
       </div>
 
       <div className="flex items-center gap-1">
-        <ChevronDown className="w-3 h-3 text-slate-600" />
-        <label htmlFor="section-select" className="text-slate-400">Section:</label>
+        <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+        <label htmlFor="section-select" className="text-[var(--text-muted)]">Section:</label>
         <select
           id="section-select"
           value={section}
           onChange={(e) => handleSectionChange(e.target.value)}
-          className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-100 hover:border-slate-600 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/50 cursor-pointer"
+          className="px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-primary)] hover:border-[var(--accent)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]/50 cursor-pointer"
         >
           {sections.length > 0 ? (
             sections.map(s => (

@@ -58,6 +58,9 @@ _Last updated: 2026-09-09 by implementation-orchestrator_
 | 2026-09-09 | Terra frontend preflight | Add requested-window placement and task/request/plan lineage | Pending Gantt bars and Block Finder selection otherwise lack truthful semantics. |
 | 2026-09-09 | Terra frontend preflight | Add repeatable browser E2E and truthful synthetic connection copy | The repository has no E2E runner and current LIVE labels contradict API provenance. |
 | 2026-09-09 | user | Approve department ticket dashboard implementation plan | The user explicitly replied “approve plan”; implementation may proceed with Luna and Terra workstreams. |
+| 2026-09-09 | implementation-orchestrator | Complete design powers plan across Control Center and Field App | Executed CC-1 (Shell drawers, Next.js Link routing, StatusBar layout), CC-2 (Standardized QueryState vocabulary across all view components), CC-3 (A11y labels and focus management on forms), CC-4 (Token hygiene, shadow removal, check_token_sync.py in CI), FA-1 (Field correctness, upload error non-pop, empty queue guard, action-keyed loading), FA-2 (Field 4-destination NavigationBar shell, persistent EmergencyAppBarAction on all screens, onGenerateRoute table), FA-3 (Field typography & theme scaling), and comprehensive T-1 test suites. |
+| 2026-09-09 | implementation-orchestrator | Opportunistic Tailwind token consolidation & token sync CI | Cleaned 51 duplicate variables from globals.css; added python script check_token_sync.py in CI to enforce zero token drift between canonical packages/design-tokens, Next.js CSS, and Flutter Dart. |
+| 2026-09-09 | implementation-orchestrator | Preserve uncommitted forms and isolate DigitalTwinView/schematic | Strict boundary preserved for user uncommitted files (TicketComposer, TicketDashboardView, Evidence views) and orphaned DigitalTwinView. |
 
 ## Open Questions
 - [x] Primary immediate workflow: show all-India railway tracks and simulated track-aligned reported areas on the Network map.
@@ -123,3 +126,14 @@ _Assessment independence: degraded — the three reviewer slots were unavailable
 
 ### 2026-09-09 Terra frontend preflight → implementation team
 > "Build the typed ticket layer first, then the composer/dashboard, pass selected linked task IDs into Block Finder, and render requests in a dedicated semantic Gantt lane. Treat synthetic provenance as a global operational state and add repeatable browser-E2E infrastructure before claiming the live flow is covered."
+
+### 2026-09-09 implementation-orchestrator → verification
+> "The reliability pass closed the evidence and ticket lifecycle gaps: file reads now gate submission, demo upload returns the typed evidence/manifest envelope, multipart completion verifies parts and hashes, and evidence access is scoped. Ticket queues now expose API-authorized accept/reject/cancel actions with mandatory reasons; authenticated event streams and query retries preserve live state."
+
+## 2026-09-09 Reliability Review Findings
+
+- Critical evidence contract mismatch fixed: demo upload now returns `{ evidence, manifest }`, imports its media/hash dependencies, validates JPEG/MP4 payloads, and rejects malformed base64.
+- Critical upload integrity gap fixed: task/step ownership, media kind, idempotency scope, multipart completeness, declared size, and SHA-256 are checked before evidence enters verification.
+- Major ticket workflow gap fixed: `PATCH /api/v1/block-requests/{request_id}/status` is role-gated, reason-required, emits an audit event, and returns `allowedActions`.
+- Major auth/realtime gap fixed: expired sessions stay on Bearer identity until refresh fails; WebSocket accepts access tokens and invalidates evidence, task, ticket, plan, possession, and analytics caches for relevant events.
+- Validation: 160 backend tests, 19 frontend test files / 98 tests, Next production build, and Python compileall pass. ESLint has 14 warnings and no errors.

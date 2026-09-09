@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useResetDemo } from '@/lib/queries';
 import { setApiRole } from '@/lib/api';
 import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import {
   LayoutDashboard,
   Network,
@@ -169,41 +170,33 @@ export function AppShell({ children }: AppShellProps) {
         <div className="flex items-center gap-3">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 shrink-0 rounded bg-sky-600 border border-sky-400 flex items-center justify-center font-mono font-black text-slate-950 text-sm shadow-md cursor-pointer hover:bg-sky-500 transition-all"
-              onClick={() => router.push('/command-center')}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  router.push('/command-center');
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              aria-label="Home"
+            <Link
+              href="/command-center"
+              className="w-8 h-8 shrink-0 rounded bg-[var(--accent)] border border-[var(--border-strong)] flex items-center justify-center font-mono font-black text-[var(--bg-canvas)] text-sm shadow-md hover:opacity-90 transition-all"
+              aria-label="Railblock home"
             >
               R
-            </div>
+            </Link>
             <div>
-              <span className="font-mono font-bold text-sm tracking-wider text-white">
-                RAIL<span className="text-sky-400">OS</span>
+              <span className="font-mono font-bold text-sm tracking-wider text-[var(--text-primary)]">
+                RAIL<span className="text-[var(--accent)]">BLOCK</span>
               </span>
-              <span className="hidden sm:inline-block text-[10px] font-mono text-slate-400 ml-2 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
+              <span className="hidden sm:inline-block text-[10px] font-mono text-[var(--text-muted)] ml-2 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)]">
                 INDIAN RAILWAYS CONTROL CENTER
               </span>
             </div>
           </div>
 
           {/* Territory Selector */}
-          <div className="hidden lg:block border-l border-slate-800/50 pl-4">
+          <div className="hidden lg:block border-l border-[var(--border-default)] pl-4">
             <TerritorySelector />
           </div>
         </div>
 
         {/* Status & Controls */}
           <div className="flex items-center gap-2 md:gap-3">
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-300 px-2 py-1 rounded bg-slate-900 border border-slate-800" role="status">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+          <div className="flex items-center gap-2 text-xs font-mono text-[var(--text-secondary)] px-2 py-1 rounded bg-[var(--bg-panel)] border border-[var(--border-default)]" role="status">
+            <span className="w-2 h-2 rounded-full bg-[var(--status-ok-fg)]" aria-hidden="true" />
             <span>SYNTHETIC API CONNECTED</span>
           </div>
 
@@ -250,10 +243,23 @@ export function AppShell({ children }: AppShellProps) {
           )}
 
           <button
+            onClick={() => {
+              const current = useRailOSStore.getState().activeDrawer;
+              useRailOSStore.getState().setActiveDrawer(current ? null : 'alerts');
+            }}
+            title="Toggle Right Context Rail"
+            aria-label="Toggle context panel"
+            className="min-h-11 flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)] border border-[var(--border-default)] text-xs font-mono font-medium transition-all cursor-pointer"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span className="hidden sm:inline">Panel</span>
+          </button>
+
+          <button
             onClick={handleReset}
             disabled={resetDemoMutation.isPending}
             title="Reset to Baseline Demo Scenario"
-            className="min-h-11 flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-medium transition-all cursor-pointer disabled:opacity-50"
+            className="min-h-11 flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)] border border-[var(--border-default)] text-xs font-mono font-medium transition-all cursor-pointer disabled:opacity-50"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${resetDemoMutation.isPending ? 'animate-spin' : ''}`} />
             <span>{resetDemoMutation.isPending ? 'Resetting...' : 'Reset Demo'}</span>
@@ -262,7 +268,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
-            className="md:hidden p-2 rounded hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 transition-all"
+            className="md:hidden p-2 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
             aria-label="Toggle navigation"
           >
             {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -272,26 +278,24 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Mobile Menu */}
       {mobileNavOpen && (
-        <nav className="md:hidden px-3 py-2 border-b border-slate-800 bg-slate-950/70 space-y-1">
+        <nav className="md:hidden px-3 py-2 border-b border-[var(--border-default)] bg-[var(--bg-panel)] space-y-1">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
-              <button
+              <Link
                 key={item.href}
-                onClick={() => {
-                  router.push(item.href);
-                  setMobileNavOpen(false);
-                }}
+                href={item.href}
+                onClick={() => setMobileNavOpen(false)}
                 className={`w-full min-h-11 flex items-center gap-2.5 px-3 py-2 rounded text-xs font-mono font-semibold transition-all border ${
                   active
-                    ? 'bg-sky-600/20 text-sky-300 border-sky-500/50'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border-transparent'
+                    ? 'bg-[var(--status-caution-bg)] text-[var(--status-caution-text)] border-[var(--status-caution-border)]'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] border-transparent'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${active ? 'text-sky-400' : 'text-slate-500'}`} />
+                <Icon className={`w-4 h-4 ${active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`} />
                 <span>{item.label}</span>
-              </button>
+              </Link>
             );
           })}
         </nav>
@@ -302,10 +306,10 @@ export function AppShell({ children }: AppShellProps) {
         {/* Left Sidebar Navigation (Desktop) */}
         <aside
           aria-label="Operational views"
-          className="w-64 border-r border-slate-800/90 bg-[var(--bg-surface)] p-3 flex flex-col justify-between hidden md:flex"
+          className="w-64 border-r border-[var(--border-default)] bg-[var(--bg-surface)] p-3 flex flex-col justify-between hidden md:flex"
         >
           <div className="space-y-1">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 px-3 py-1.5 font-bold">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] px-3 py-1.5 font-bold">
               Operational Views
             </div>
 
@@ -313,27 +317,27 @@ export function AppShell({ children }: AppShellProps) {
               const Icon = item.icon;
               const active = isActive(item.href);
               return (
-                <button
+                <Link
                   key={item.href}
-                  onClick={() => router.push(item.href)}
+                  href={item.href}
                   aria-current={active ? 'page' : undefined}
                   className={`w-full min-h-11 flex items-center gap-2.5 px-3 py-2 rounded text-xs font-mono font-semibold transition-all border cursor-pointer ${
                     active
-                      ? 'bg-sky-600/20 text-sky-300 border-sky-500/50 shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border-transparent'
+                      ? 'bg-[var(--status-caution-bg)] text-[var(--status-caution-text)] border-[var(--status-caution-border)] shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] border-transparent'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${active ? 'text-sky-400' : 'text-slate-500'}`} />
+                  <Icon className={`w-4 h-4 ${active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`} />
                   <span>{item.label}</span>
-                </button>
+                </Link>
               );
             })}
           </div>
 
-          <div className="p-3 rounded border border-slate-800/80 bg-slate-900/50 text-[11px] font-mono text-slate-400 space-y-1">
-            <div className="text-slate-200 font-bold">Corridor Division</div>
+          <div className="p-3 rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[11px] font-mono text-[var(--text-muted)] space-y-1">
+            <div className="text-[var(--text-primary)] font-bold">Corridor Division</div>
             <div>Prayagraj (NCR) & Delhi (NR)</div>
-            <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-800">
+            <div className="text-[10px] text-[var(--text-muted)] pt-1 border-t border-[var(--border-default)]">
               Trunk: NDLS–GZB–ALJN–TDL
             </div>
           </div>
@@ -346,7 +350,7 @@ export function AppShell({ children }: AppShellProps) {
         >
           {/* Content Area */}
           <div className="flex-1 p-3 md:p-4 overflow-y-auto">
-            <h1 className="sr-only">RailOS Control Center</h1>
+            <h1 className="sr-only">Railblock Control Center</h1>
             {children}
           </div>
 

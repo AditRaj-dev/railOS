@@ -167,7 +167,7 @@ class RailOSDepartmentBadge extends StatelessWidget {
           displayLabel,
           style: TextStyle(
             color: text,
-            fontSize: 10,
+            fontSize: 12,
             fontFamily: 'monospace',
             fontWeight: FontWeight.bold,
             letterSpacing: 0.4,
@@ -212,13 +212,13 @@ class RailOSPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 13, color: fg),
+            Icon(icon, size: 14, color: fg),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
                 color: textColor,
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.w600,
               ),

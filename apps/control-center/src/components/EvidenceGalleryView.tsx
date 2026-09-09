@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Film,
   Camera,
@@ -12,9 +12,11 @@ import {
   CheckCircle2,
   XCircle,
   Search,
+  Upload,
 } from 'lucide-react';
 import { getEvidenceList, type EvidenceRecord } from '@/lib/api';
 import { EvidenceDetailModal } from './EvidenceDetailModal';
+import { EvidenceUploadModal } from './EvidenceUploadModal';
 
 type KindFilter = 'ALL' | 'PHOTO' | 'VIDEO';
 type StatusFilter = 'ALL' | EvidenceRecord['status'];
@@ -52,20 +54,26 @@ export function EvidenceGalleryView() {
   const [items, setItems] = useState<EvidenceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [kindFilter, setKindFilter] = useState<KindFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    const request = ++requestId.current;
+    setLoading(true);
+    setError(null);
     try {
       const res = await getEvidenceList(statusFilter === 'ALL' ? undefined : { status: statusFilter });
-      setItems(res.items || []);
+      if (request === requestId.current) setItems(res.items || []);
     } catch (err) {
-      console.error('Failed to fetch evidence media:', err);
+      if (request === requestId.current) setError(`Unable to load evidence: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
-  };
+  }, [statusFilter]);
 
   const handleRefresh = () => {
     setLoading(true);
@@ -73,13 +81,11 @@ export function EvidenceGalleryView() {
   };
 
   useEffect(() => {
-    // fetchData's setState calls resolve after the await, not synchronously
-    // within this effect body; loading starts true via useState and is reset
-    // by fetchData's own finally block.
+    // Reload on filter changes and ignore responses from superseded requests.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+    return () => { requestId.current += 1; };
+  }, [fetchData]);
 
   const photoCount = items.filter((i) => i.kind === 'PHOTO').length;
   const videoCount = items.filter((i) => i.kind === 'VIDEO').length;
@@ -112,13 +118,23 @@ export function EvidenceGalleryView() {
           </p>
         </div>
 
-        <button
-          onClick={handleRefresh}
-          className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          REFRESH
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            UPLOAD DEMO EVIDENCE
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-slate-700 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            REFRESH
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -159,6 +175,7 @@ export function EvidenceGalleryView() {
           {(['ALL', 'PHOTO', 'VIDEO'] as KindFilter[]).map((k) => (
             <button
               key={k}
+              aria-pressed={kindFilter === k}
               onClick={() => setKindFilter(k)}
               className={`px-2.5 py-1 rounded text-[11px] font-mono font-bold transition-all border ${
                 kindFilter === k
@@ -172,6 +189,7 @@ export function EvidenceGalleryView() {
         </div>
 
         <select
+          aria-label="Evidence status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           className="min-h-9 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-mono text-slate-200"
@@ -184,6 +202,7 @@ export function EvidenceGalleryView() {
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
+            aria-label="Search evidence"
             type="text"
             placeholder="Search evidence ID, task, or supervisor..."
             value={search}
@@ -198,7 +217,14 @@ export function EvidenceGalleryView() {
       </div>
 
       {/* Media Grid */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <p role="status" className="text-sm text-slate-300">Loading evidence...</p>
+      ) : error ? (
+        <div role="alert" className="rounded border border-red-800 p-4 text-sm text-red-300">
+          <p>{error}</p>
+          <button type="button" onClick={handleRefresh} className="mt-2 underline">Retry loading evidence</button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="p-10 text-center rounded-lg border border-dashed border-slate-800 text-slate-500">
           <ImageOff className="w-8 h-8 mx-auto mb-2 text-slate-600" />
           <p className="text-sm">No media matches the current filters.</p>
@@ -268,6 +294,15 @@ export function EvidenceGalleryView() {
           evidence={selectedEvidence}
           onClose={() => setSelectedEvidence(null)}
           onReviewed={fetchData}
+        />
+      )}
+
+      {showUploadModal && (
+        <EvidenceUploadModal
+          onClose={() => setShowUploadModal(false)}
+          onUploaded={async () => {
+            await fetchData();
+          }}
         />
       )}
     </div>

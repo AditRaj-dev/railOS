@@ -20,6 +20,10 @@ const BACKEND_ROLE_TO_FRONTEND: Record<string, UserRole> = {
   TPC: 'TPC',
   ENGINEERING: 'ENGINEERING',
   SIGNAL_TELECOM: 'SIGNAL_TELECOM',
+  PLANNER: 'PLANNER',
+  TRACTION: 'TRACTION',
+  FIELD_SUPERVISOR: 'FIELD_SUPERVISOR',
+  MANAGEMENT: 'MANAGEMENT',
 };
 
 function toFrontendRole(role: string): UserRole {
@@ -68,6 +72,7 @@ interface AuthStoreState {
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let sessionRevision = 0;
 
 function clearRefreshTimer() {
   if (refreshTimer) {
@@ -110,7 +115,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       // time; a staggered caller can still capture a token, get delayed, and
       // fail against it after a sibling call already succeeded). Don't tear
       // down a session a sibling call has already legitimately established.
-      if (get().status === 'authenticated') return;
+      if (api.getAuthSession()) return;
       clearRefreshTimer();
       clearPersistedRefreshToken();
       set({ session: null, status: 'unauthenticated' });
@@ -123,9 +128,11 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     error: null,
 
     login: async (employeeId, password) => {
+      const revision = ++sessionRevision;
       set({ error: null });
       try {
         const result = await api.authLogin(employeeId, password);
+        if (revision !== sessionRevision) return;
         const session = {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
@@ -148,6 +155,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     },
 
     logout: async () => {
+      sessionRevision += 1;
       const session = get().session;
       clearRefreshTimer();
       clearPersistedRefreshToken();
@@ -163,6 +171,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     },
 
     restoreSession: async () => {
+      const revision = sessionRevision;
       const refreshToken = readPersistedRefreshToken();
       if (!refreshToken) {
         set({ status: 'unauthenticated' });
@@ -171,6 +180,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       set({ status: 'restoring' });
       try {
         const result = await api.refreshSession(refreshToken);
+        if (revision !== sessionRevision) return;
         const session = {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
@@ -186,6 +196,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           await get().restoreSession();
         });
       } catch {
+        if (revision !== sessionRevision) return;
         // Same staggered-caller race as onExpired above: this refreshToken may
         // already have been rotated past by a concurrent success.
         if (get().status === 'authenticated') return;

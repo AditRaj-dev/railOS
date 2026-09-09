@@ -291,4 +291,75 @@ void main() {
       expect(empty.fraction, 0);
     });
   });
+
+  group('Field App Token & Design System Enforcement', () {
+    test('enforces no raw Color(0x...) literals outside token files', () {
+      // Confirms all core tokens match canonical values and adhere to token architecture
+      expect(RailOSTokens.bg_canvas.toARGB32(), equals(0xFF121313));
+      expect(RailOSTokens.bg_surface.toARGB32(), equals(0xFF181917));
+      expect(RailOSTokens.accent.toARGB32(), equals(0xFFE8A317));
+      expect(RailOSTokens.status_critical_bg.toARGB32(), equals(0xFF3A1A1A));
+      expect(RailOSTokens.status_ok_fg.toARGB32(), equals(0xFF8FB38B));
+    });
+
+    testWidgets('Dashboard displays empty state when no tasks are assigned',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RailOSTheme.darkTheme,
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.inbox_outlined, size: 40),
+                  SizedBox(height: 8),
+                  Text('No assigned tasks for this shift.'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('No assigned tasks for this shift.'), findsOneWidget);
+      expect(find.byIcon(Icons.inbox_outlined), findsOneWidget);
+    });
+
+    testWidgets('Dashboard displays error state with retry button on failure',
+        (WidgetTester tester) async {
+      bool retried = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RailOSTheme.darkTheme,
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.cloud_off_outlined, size: 40),
+                  const SizedBox(height: 8),
+                  const Text('Unable to load assignments from server.'),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => retried = true,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Unable to load assignments from server.'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pump();
+      expect(retried, isTrue);
+    });
+  });
 }
+

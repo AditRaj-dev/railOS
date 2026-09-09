@@ -2,13 +2,16 @@
 
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getApiRole } from './api';
+import { getApiRole, getAuthSession } from './api';
 import { useRailOSStore } from '@/store/railosStore';
 
 function eventSocketUrl(role: string): string {
   const configured = process.env.NEXT_PUBLIC_RAILOS_API_URL || 'http://localhost:8000';
   const base = configured.replace(/^http/i, 'ws').replace(/\/$/, '');
-  const query = new URLSearchParams({ user: 'demo-user', role });
+  const session = getAuthSession();
+  const query = session
+    ? new URLSearchParams({ access_token: session.accessToken })
+    : new URLSearchParams({ user: 'demo-user', role });
   return `${base}/api/v1/events/ws?${query.toString()}`;
 }
 
@@ -37,7 +40,12 @@ export function useRailOSEventStream(enabled = true) {
           || type.startsWith('PLAN_SANCTION')
           || type === 'PLAN_APPROVED'
           || type === 'BLOCK_BURST_RECORDED'
-          || type === 'BLOCK_REQUEST_CREATED';
+          || type.startsWith('BLOCK_REQUEST_')
+          || type.startsWith('TASK_')
+          || type.startsWith('DEFECT_')
+          || type.startsWith('EVIDENCE_')
+          || type === 'DEMO_RESET'
+          || type === 'PLAN_GENERATED';
       })) return;
 
       queryClient.invalidateQueries({ queryKey: ['possessions'] });
@@ -54,9 +62,6 @@ export function useRailOSEventStream(enabled = true) {
     const connect = () => {
       if (disposed) return;
       try {
-        // Browser WebSocket cannot attach arbitrary headers; the query context
-        // keeps the role explicit for compatible gateways while the API's
-        // normal fetches still carry X-RailOS-Role.
         socket = new WebSocket(eventSocketUrl(getApiRole() || role));
         socket.onmessage = (message) => {
           try {

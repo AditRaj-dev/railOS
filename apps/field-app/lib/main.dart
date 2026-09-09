@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/emergency_screen.dart';
+import 'screens/handback_screen.dart';
+import 'screens/isolation_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/possession_screen.dart';
+import 'screens/work_screen.dart';
 import 'services/api_client.dart';
+import 'shell/field_shell.dart';
 import 'storage/offline_evidence_queue.dart';
 import 'theme/railos_theme.dart';
 
@@ -49,11 +54,11 @@ class _RailOSFieldAppState extends State<RailOSFieldApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RailOS Field Operations',
+      title: 'Railblock Field Operations',
       debugShowCheckedModeBanner: false,
       theme: RailOSTheme.darkTheme,
       home: _isLoggedIn
-          ? DashboardScreen(
+          ? FieldShell(
               apiClient: _apiClient,
               onLogout: () {
                 _queue.clearSession();
@@ -66,6 +71,64 @@ class _RailOSFieldAppState extends State<RailOSFieldApp> {
                 setState(() => _isLoggedIn = true);
               },
             ),
+      onGenerateRoute: (settings) {
+        final uri = Uri.parse(settings.name ?? '/');
+        final args = settings.arguments;
+
+        switch (uri.path) {
+          case '/emergency':
+            return MaterialPageRoute(
+              builder: (_) => EmergencyScreen(apiClient: _apiClient),
+              settings: settings,
+            );
+          case '/possession':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => PossessionScreen(
+                  possession: args,
+                  apiClient: _apiClient,
+                ),
+                settings: settings,
+              );
+            }
+            break;
+          case '/isolation':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => IsolationScreen(
+                  possession: args,
+                  apiClient: _apiClient,
+                ),
+                settings: settings,
+              );
+            }
+            break;
+          case '/work':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => WorkScreen(
+                  task: args['task'] as Map<String, dynamic>? ?? const {},
+                  possession: args['possession'] as Map<String, dynamic>? ?? const {},
+                  apiClient: _apiClient,
+                ),
+                settings: settings,
+              );
+            }
+            break;
+          case '/handback':
+            if (args is Map<String, dynamic>) {
+              return MaterialPageRoute(
+                builder: (_) => HandbackScreen(
+                  possession: args,
+                  apiClient: _apiClient,
+                ),
+                settings: settings,
+              );
+            }
+            break;
+        }
+        return null;
+      },
     );
   }
 }

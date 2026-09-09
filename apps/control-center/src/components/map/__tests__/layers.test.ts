@@ -7,7 +7,7 @@ describe('Map layer configuration and Indian bounds', () => {
   const dummyProvenance = {
     synthetic: true,
     label: 'Test pilot data',
-    source: 'RailOS unit test',
+    source: 'Railblock unit test',
     generatedAt: '2026-09-08',
   };
 

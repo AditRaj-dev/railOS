@@ -723,10 +723,23 @@ async def validation_error(_,exc): return JSONResponse(error_body("VALIDATION_ER
 def listed(values): return {"items":[v.model_dump(by_alias=True,mode="json") if hasattr(v,"model_dump") else v for v in values.values()],"count":len(values),"synthetic":True,"scenario":"GZB_ALJN_DEMO"}
 
 
-def _ticket_view(request: BlockRequest) -> dict[str, Any]:
+def _ticket_actions(request: BlockRequest, user: User) -> list[str]:
+    if request.status not in {BlockRequestStatus.REQUESTED, BlockRequestStatus.READY}:
+        return []
+    if any(request.linkedTaskId in block.taskIds for plan in state.plans.values() for block in plan.blocks):
+        return []
+    manager = normalize_role(user.role) in {"ADMIN", "CONTROL_OFFICER", "PLANNER"}
+    actions = ["ACCEPT", "REJECT"] if manager and request.status == BlockRequestStatus.REQUESTED else []
+    if manager or request.requestedBy == user.user_id:
+        actions.append("CANCEL")
+    return actions
+
+
+def _ticket_view(request: BlockRequest, user: User | None = None) -> dict[str, Any]:
     payload = request.model_dump(by_alias=True, mode="json")
     task = state.tasks.get(request.linkedTaskId)
     payload["linkedTask"] = task.model_dump(by_alias=True, mode="json") if task else None
+    payload["allowedActions"] = _ticket_actions(request, user) if user else []
     return payload
 
 
@@ -932,13 +945,13 @@ def list_block_requests(department:Department|None=None,status:BlockRequestStatu
         and (status is None or r.status == status)
         and (sectionId is None or r.sectionId == sectionId)
     ]
-    return {"items": [_ticket_view(r) for r in items], "count": len(items), "synthetic": True, "scenario": "GZB_ALJN_DEMO"}
+    return {"items": [_ticket_view(r, user) for r in items], "count": len(items), "synthetic": True, "scenario": "GZB_ALJN_DEMO"}
 
 @app.get("/api/v1/block-requests/{request_id}")
 def get_block_request(request_id:str,user:User=Depends(auth)):
     request = _find_request(request_id)
     _authorize_ticket_department(user, request.department)
-    return _ticket_view(request)
+    return _ticket_view(request, user)
 
 @app.post("/api/v1/block-requests")
 def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header(None,alias="Idempotency-Key"),user:User=Depends(allow(*SUBMITTER_TICKET_ROLES))):
@@ -961,6 +974,8 @@ def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header
     asset = _resolve_request_asset(body)
     _validate_request_location(body, asset, section)
     request_id = body.request_id or f"REQ-{uuid.uuid4().hex[:10].upper()}"
+    if request_id in state.block_requests:
+        raise HTTPException(409, {"code": "REQUEST_ALREADY_EXISTS", "message": "Ticket ID already exists"})
     task = _build_linked_task(body, request_id, asset)
     now = datetime.now(timezone.utc).isoformat()
     request = BlockRequest(
@@ -980,9 +995,28 @@ def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header
         state.block_requests[request.requestId] = request
         state.tasks[task.taskId] = task
         state.emit("BLOCK_REQUEST_CREATED", request.requestId, request.model_dump(by_alias=True, mode="json"), user.user_id, reason=body.reason)
-        response = _ticket_view(request)
+        response = _ticket_view(request, user)
         if key: state.idempotency[key] = {"fingerprint": fingerprint, "response": response}
     return response
+
+@app.patch("/api/v1/block-requests/{request_id}/status")
+def update_block_request_status(request_id: str, body: BlockRequestStatusUpdate, user: User = Depends(auth)):
+    with state.transaction():
+        request = _find_request(request_id)
+        _authorize_ticket_department(user, request.department)
+        action = {BlockRequestStatus.READY: "ACCEPT", BlockRequestStatus.REJECTED: "REJECT",
+                  BlockRequestStatus.CANCELLED: "CANCEL"}.get(body.status)
+        if not action or action not in _ticket_actions(request, user):
+            raise HTTPException(409, {"code": "TICKET_ACTION_UNAVAILABLE", "message": "This ticket action is not available for your role or its current planning state"})
+        if not body.reason.strip():
+            raise HTTPException(422, {"code": "REASON_REQUIRED", "message": "Enter a reason for the ticket decision", "details": {"field": "reason"}})
+        before = request.model_dump(by_alias=True, mode="json")
+        request.status = body.status
+        request.updatedAtUtc = datetime.now(timezone.utc).isoformat()
+        request.reason = body.reason.strip()
+        state.emit("BLOCK_REQUEST_STATUS_UPDATED", request_id, request.model_dump(by_alias=True, mode="json"),
+                   user.user_id, reason=request.reason, before=before)
+        return _ticket_view(request, user)
 
 @app.get("/health")
 @app.get("/api/v1/health")
@@ -2242,8 +2276,24 @@ async def websocket_events(socket:WebSocket):
     # handshake.  Keep the existing header contract for native/mobile clients,
     # while allowing the desk browser to authenticate with the same normalized
     # values in the query string (wss://.../events/ws?userId=...&role=...).
-    user = socket.headers.get("x-railos-user") or socket.query_params.get("userId") or socket.query_params.get("user")
-    role = socket.headers.get("x-railos-role") or socket.query_params.get("role")
+    from .auth import ENABLE_SYNTHETIC_AUTH
+    token = socket.query_params.get("access_token")
+    authorization = socket.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+    if token:
+        try:
+            payload = decode_access_token(token)
+        except HTTPException:
+            await socket.close(code=4401)
+            return
+        user, role = payload.get("sub"), payload.get("role")
+    elif ENABLE_SYNTHETIC_AUTH:
+        user = socket.headers.get("x-railos-user") or socket.query_params.get("userId") or socket.query_params.get("user")
+        role = socket.headers.get("x-railos-role") or socket.query_params.get("role")
+    else:
+        await socket.close(code=4401)
+        return
     if not user: await socket.close(code=4401); return
     norm_role = normalize_role(role)
     if norm_role not in VALID_ROLES: await socket.close(code=4403); return

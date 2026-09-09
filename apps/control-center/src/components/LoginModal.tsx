@@ -44,7 +44,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         onClose();
       }}
       title="Sign in"
-      description="Authenticate with a real RailOS account instead of the demo role selector."
+      description="Authenticate with a real Railblock account instead of the demo role selector."
       maxWidthClassName="max-w-sm"
     >
       <form onSubmit={handleSubmit} className="space-y-3">

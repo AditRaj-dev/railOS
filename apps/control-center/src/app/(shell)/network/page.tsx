@@ -124,7 +124,7 @@ function NetworkWorkspace() {
 
         {error && (
           <span className="ml-auto text-[11px] font-mono text-[var(--status-critical-text)]">
-            Network catalogue unavailable — is the RailOS API running?
+            Network catalogue unavailable — is the Railblock API running?
           </span>
         )}
       </div>

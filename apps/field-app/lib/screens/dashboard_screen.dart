@@ -73,7 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _loadError = 'Could not reach RailOS: $error');
+      setState(() => _loadError = 'Could not reach Railblock: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -227,40 +227,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // Offline queue sync indicator
                   if (pendingCount > 0) ...[
                     const SizedBox(width: RailOSTokens.spacingSm),
-                    InkWell(
-                      onTap: _syncPending,
-                      borderRadius: BorderRadius.circular(
-                        RailOSTokens.borderRadiusSm,
-                      ),
-                      child: Container(
-                        height: RailOSTokens.minTouchTargetDp,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: RailOSTokens.status_caution_bg,
+                    Tooltip(
+                      message: 'Sync offline evidence queue ($pendingCount pending)',
+                      child: Semantics(
+                        button: true,
+                        label: 'Sync offline evidence queue, $pendingCount items pending',
+                        child: InkWell(
+                          onTap: _syncPending,
                           borderRadius: BorderRadius.circular(
                             RailOSTokens.borderRadiusSm,
                           ),
-                          border: Border.all(
-                            color: RailOSTokens.status_caution_border,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.sync,
-                              color: RailOSTokens.status_caution_fg,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '$pendingCount Sync',
-                              style: const TextStyle(
-                                color: RailOSTokens.status_caution_text,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                          child: Container(
+                            height: RailOSTokens.minTouchTargetDp,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: RailOSTokens.status_caution_bg,
+                              borderRadius: BorderRadius.circular(
+                                RailOSTokens.borderRadiusSm,
+                              ),
+                              border: Border.all(
+                                color: RailOSTokens.status_caution_border,
                               ),
                             ),
-                          ],
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.sync,
+                                  color: RailOSTokens.status_caution_fg,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$pendingCount Sync',
+                                  style: const TextStyle(
+                                    color: RailOSTokens.status_caution_text,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),

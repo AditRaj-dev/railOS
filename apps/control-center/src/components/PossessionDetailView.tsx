@@ -9,6 +9,7 @@ import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { Modal } from './ui/Modal';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
+import { QueryState } from './ui/QueryState';
 
 const STAGES = [
   { number: 5, label: 'Clearance', states: ['SANCTIONED', 'CLEARANCE_REQUESTED', 'DEFERRED', 'CLEARANCE_GRANTED'] },
@@ -73,13 +74,30 @@ export function PossessionDetailView({ possessionId }: { possessionId: string })
     };
     actionMutation.mutate(
       { possessionId: possession.possessionId, action: activeAction, payload },
-      { onSuccess: () => setNotice(`${actionLabel(activeAction)} accepted by RailOS.`) }
+      { onSuccess: () => setNotice(`${actionLabel(activeAction)} accepted by Railblock.`) }
     );
     setActiveAction('');
   };
 
-  if (possessionQuery.isLoading) return <div className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-6 text-sm text-[var(--text-secondary)]" role="status">Loading possession detail…</div>;
-  if (possessionQuery.isError || !possession) return <div className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-6 text-sm text-[var(--status-critical-text)]" role="alert"><p className="font-semibold">Possession detail unavailable</p><p className="mt-1">{possessionQuery.error?.message || 'The requested possession was not found.'}</p><Link href="/possessions" className="mt-4 inline-flex min-h-11 items-center rounded border border-[var(--status-critical-border)] px-3 font-semibold">Return to possession board</Link></div>;
+  if (possessionQuery.isLoading || possessionQuery.isError || !possession) {
+    return (
+      <div className="space-y-4">
+        <Link href="/possessions" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Possession board
+        </Link>
+        <QueryState
+          isLoading={possessionQuery.isLoading}
+          isError={possessionQuery.isError || !possession}
+          error={possessionQuery.error}
+          errorMessage={possessionQuery.error?.message || 'The requested possession was not found.'}
+          onRetry={() => { void possessionQuery.refetch(); }}
+          loadingMessage="Loading possession detail…"
+        >
+          <div />
+        </QueryState>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5" aria-labelledby="possession-detail-title">
@@ -136,7 +154,7 @@ export function PossessionDetailView({ possessionId }: { possessionId: string })
         {!possession.transitions.length && <p className="mt-3 text-sm text-[var(--text-muted)]">No transitions recorded yet.</p>}
       </section>
 
-      <Modal open={Boolean(activeAction)} title={activeAction ? actionLabel(activeAction) : 'Possession action'} description={`${possession.possessionId} · RailOS will validate this transition`} onClose={closeAction}>
+      <Modal open={Boolean(activeAction)} title={activeAction ? actionLabel(activeAction) : 'Possession action'} description={`${possession.possessionId} · Railblock will validate this transition`} onClose={closeAction}>
         <form onSubmit={submitAction} className="space-y-4">
           {activeAction === 'record-correspondence-test' && <div><label htmlFor="detail-test-duration" className="mb-1 block text-sm font-semibold text-[var(--text-secondary)]">Test duration (minutes)</label><input id="detail-test-duration" type="number" min={30} value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} required className="min-h-11 w-full rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 font-mono text-[var(--text-primary)]" /><p className="mt-1 text-xs text-[var(--text-muted)]">HC-006 requires a minimum of 30 minutes.</p></div>}
           {activeAction === 'certify-fitness' && <div><label htmlFor="detail-tsr" className="mb-1 block text-sm font-semibold text-[var(--text-secondary)]">Initial TSR speed (km/h)</label><select id="detail-tsr" value={tsrSpeedKmph} onChange={(event) => setTsrSpeedKmph(event.target.value)} className="min-h-11 w-full rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 font-mono text-[var(--text-primary)]"><option value="20">20</option><option value="45">45</option><option value="75">75</option></select></div>}

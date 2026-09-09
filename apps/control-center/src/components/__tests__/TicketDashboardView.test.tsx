@@ -1,12 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BlockRequest } from '@/lib/api';
-import { useBlockRequests } from '@/lib/queries';
+import { useBlockRequests, useUpdateBlockRequestStatus } from '@/lib/queries';
 import { useRailOSStore } from '@/store/railosStore';
 import { TicketDashboardView } from '../TicketDashboardView';
 
 vi.mock('@/lib/queries', () => ({
   useBlockRequests: vi.fn(),
+  useUpdateBlockRequestStatus: vi.fn(),
 }));
 
 vi.mock('@/store/railosStore', () => ({
@@ -57,6 +58,7 @@ function mockTickets(items: BlockRequest[], overrides: Partial<ReturnType<typeof
 describe('TicketDashboardView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useUpdateBlockRequestStatus).mockReturnValue({ isPending: false, isError: false, error: null, mutate: vi.fn() } as never);
   });
 
   it('renders all three department tabs plus All for a broad role', () => {

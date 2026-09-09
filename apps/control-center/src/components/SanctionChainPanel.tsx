@@ -19,6 +19,7 @@ import {
   SIGNATURE_DECISION_TOKENS,
 } from './tokens';
 import { StatusChip } from './StatusChip';
+import { QueryState } from './ui/QueryState';
 
 const AUTHORITY_LABELS: Record<SanctionAuthority, string> = {
   SANCTION: 'Sr. DOM / Management',
@@ -113,21 +114,18 @@ export function SanctionChainPanel({ planId, plan }: SanctionChainPanelProps) {
     );
   }
 
-  if (sanctionsQuery.isLoading && !chain) {
+  if (!chain && (sanctionsQuery.isLoading || sanctionsQuery.isError)) {
     return (
-      <section className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-5" aria-labelledby="sanction-chain-loading" aria-busy="true">
-        <h2 id="sanction-chain-loading" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-primary)]">Sanction chain</h2>
-        <p className="mt-3 text-sm text-[var(--text-secondary)]" role="status">Loading authority requirements…</p>
-      </section>
-    );
-  }
-
-  if (sanctionsQuery.isError && !chain) {
-    return (
-      <section className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-5" aria-labelledby="sanction-chain-error">
-        <h2 id="sanction-chain-error" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--status-critical-text)]">Sanction chain unavailable</h2>
-        <p className="mt-2 text-sm text-[var(--status-critical-text)]">{sanctionsQuery.error.message}</p>
-      </section>
+      <QueryState
+        isLoading={sanctionsQuery.isLoading}
+        isError={sanctionsQuery.isError}
+        error={sanctionsQuery.error}
+        onRetry={() => { void sanctionsQuery.refetch(); }}
+        loadingMessage="Loading authority requirements…"
+        errorMessage="Sanction chain unavailable: Failed to load authority requirements."
+      >
+        <div />
+      </QueryState>
     );
   }
 

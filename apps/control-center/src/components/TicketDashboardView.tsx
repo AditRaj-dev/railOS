@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Inbox, Plus, RefreshCw, Route } from 'lucide-react';
 import type { BlockRequest, BlockRequestStatus, DepartmentCode } from '@/lib/api';
-import { useBlockRequests } from '@/lib/queries';
+import { useBlockRequests, useUpdateBlockRequestStatus } from '@/lib/queries';
 import { useRailOSStore } from '@/store/railosStore';
 import { DEMO_EPOCH_ISO, formatMinute } from '@/lib/time';
 import { BLOCK_REQUEST_STATUS_TOKENS, DEPARTMENT_TOKENS, getTokenDef } from './tokens';
@@ -82,7 +82,15 @@ export const TicketDashboardView: React.FC = () => {
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const ticketsQuery = useBlockRequests();
+  const statusMutation = useUpdateBlockRequestStatus();
   const allItems = useMemo(() => ticketsQuery.data?.items ?? [], [ticketsQuery.data]);
+
+  const changeStatus = (item: BlockRequest, status: 'READY' | 'REJECTED' | 'CANCELLED') => {
+    const action = status === 'READY' ? 'accept' : status === 'REJECTED' ? 'reject' : 'cancel';
+    const reason = window.prompt(`Reason to ${action} ${item.requestId}:`);
+    if (!reason?.trim()) return;
+    statusMutation.mutate({ requestId: item.requestId, status, reason: reason.trim() });
+  };
 
   const countsByDepartment = useMemo(() => {
     const counts: Record<DepartmentCode, number> = { ENGG: 0, SNT: 0, TRD: 0 };
@@ -206,6 +214,8 @@ export const TicketDashboardView: React.FC = () => {
         </div>
       )}
 
+      {statusMutation.isError && <p role="alert" className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3 text-sm text-[var(--status-critical-text)]">Ticket status update failed: {statusMutation.error.message}</p>}
+
       <div
         role="tabpanel"
         id={`ticket-tabpanel-${activeTab}`}
@@ -261,6 +271,7 @@ export const TicketDashboardView: React.FC = () => {
                 <TableHeaderCell>
                   <SortButton label="Created" field="createdAt" sort={sort} onSort={toggleSort} />
                 </TableHeaderCell>
+                <TableHeaderCell>Actions</TableHeaderCell>
               </tr>
             </TableHeader>
             <TableBody>
@@ -290,6 +301,17 @@ export const TicketDashboardView: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap font-mono text-xs">{formatCreatedAt(item.createdAt)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(item.allowedActions || []).map((action) => action === 'ACCEPT' ? (
+                          <button key={action} type="button" disabled={statusMutation.isPending} onClick={() => changeStatus(item, 'READY')} className="min-h-9 rounded border border-[var(--status-ok-border)] px-2 text-xs text-[var(--status-ok-text)] hover:bg-[var(--status-ok-bg)] disabled:opacity-50">Accept</button>
+                        ) : action === 'REJECT' ? (
+                          <button key={action} type="button" disabled={statusMutation.isPending} onClick={() => changeStatus(item, 'REJECTED')} className="min-h-9 rounded border border-[var(--status-critical-border)] px-2 text-xs text-[var(--status-critical-text)] hover:bg-[var(--status-critical-bg)] disabled:opacity-50">Reject</button>
+                        ) : action === 'CANCEL' ? (
+                          <button key={action} type="button" disabled={statusMutation.isPending} onClick={() => changeStatus(item, 'CANCELLED')} className="min-h-9 rounded border border-[var(--status-caution-border)] px-2 text-xs text-[var(--status-caution-text)] hover:bg-[var(--status-caution-bg)] disabled:opacity-50">Cancel</button>
+                        ) : null)}
+                      </div>
+                    </TableCell>
                   </tr>
                 );
               })}
@@ -311,7 +333,9 @@ export const TicketDashboardView: React.FC = () => {
       >
         <TicketComposer
           initialDepartment={activeTab === 'ALL' ? undefined : activeTab}
-          onSubmitted={() => setComposerOpen(false)}
+          onSubmitted={() => {
+            void ticketsQuery.refetch();
+          }}
         />
       </Modal>
     </div>

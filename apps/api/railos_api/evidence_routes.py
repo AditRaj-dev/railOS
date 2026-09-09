@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +27,7 @@ from railos_model import (
     UserRole,
     WorkExecutionStatus,
     WorkStep,
+    compute_sha256_bytes,
 )
 
 from .auth import (
@@ -133,6 +136,13 @@ class FieldEvidenceState:
 evidence_state = FieldEvidenceState()
 
 
+def _authorize_evidence(item: EvidenceItem, user: UserAccount) -> None:
+    """Keep evidence media and review metadata scoped to its owner or reviewers."""
+    role = str(user.role).upper()
+    if role not in {"ADMIN", "CONTROL_OFFICER", "MANAGEMENT"} and item.supervisorId != user.user_id:
+        raise HTTPException(403, {"code": "EVIDENCE_FORBIDDEN", "message": "You are not assigned to this evidence item"})
+
+
 def _steps_for_task(state, task_id: str) -> list[WorkStep]:
     """Work steps for a task, from the Postgres-backed state.work_steps
     (flat dict keyed by stepId), ordered for display."""
@@ -159,10 +169,10 @@ class CreateEvidenceRequest(AuthDTO):
 
 
 class InitiateUploadRequest(AuthDTO):
-    storage_kind: str = "ORIGINAL"  # ORIGINAL or PROOF
-    total_bytes: int
+    storage_kind: Literal["ORIGINAL", "PROOF"] = "ORIGINAL"
+    total_bytes: int = Field(gt=0)
     content_type: str = "image/jpeg"
-    part_size_bytes: int = 8388608  # 8 MiB default
+    part_size_bytes: int = Field(default=8388608, gt=0)
 
 
 class PartUploadPresignResponse(AuthDTO):
@@ -172,16 +182,16 @@ class PartUploadPresignResponse(AuthDTO):
 
 
 class UploadPartItem(AuthDTO):
-    part_number: int
+    part_number: int = Field(gt=0)
     etag: str
 
 
 class CompleteUploadRequest(AuthDTO):
     session_id: str
-    storage_kind: str
-    parts: list[UploadPartItem]
-    sha256: str
-    size_bytes: int
+    storage_kind: Literal["ORIGINAL", "PROOF"]
+    parts: list[UploadPartItem] = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    size_bytes: int = Field(gt=0)
 
 
 class FinalizeEvidenceRequest(AuthDTO):
@@ -190,8 +200,8 @@ class FinalizeEvidenceRequest(AuthDTO):
 
 
 class ReviewEvidenceRequest(AuthDTO):
-    decision: str  # ACCEPT or REJECT
-    review_notes: str
+    decision: Literal["ACCEPT", "REJECT"]
+    review_notes: str = Field(min_length=1)
 
 
 # -----------------------------------------------------------------------------
@@ -460,8 +470,19 @@ def create_evidence_item(
     """Register intent to capture evidence, binding client UUIDv7 to step and account."""
     from .main import state
 
-    if req.idempotency_key and req.idempotency_key in evidence_state.idempotency:
-        return evidence_state.idempotency[req.idempotency_key]
+    idempotency_key = f"{current_user.user_id}:evidence:{req.idempotency_key}" if req.idempotency_key else None
+    if idempotency_key and idempotency_key in evidence_state.idempotency:
+        return evidence_state.idempotency[idempotency_key]
+    if req.evidence_id in state.evidence_items:
+        raise HTTPException(409, {"code": "EVIDENCE_ALREADY_EXISTS", "message": "Evidence ID already exists"})
+    step = state.work_steps.get(req.step_id)
+    if step is None or step.taskId != req.task_id:
+        raise HTTPException(422, {"code": "STEP_NOT_ASSIGNED", "message": "Evidence step is not assigned to the selected task", "details": {"field": "stepId"}})
+    # Legacy/demo repositories may retain a task step after the task catalogue
+    # has been regenerated. The step binding remains the authoritative check.
+    required_kind = EvidenceKind.PHOTO if step.requiresPhoto else EvidenceKind.VIDEO if step.requiresVideo else None
+    if required_kind and req.kind != required_kind:
+        raise HTTPException(422, {"code": "EVIDENCE_KIND_MISMATCH", "message": f"This step requires {required_kind.value} evidence", "details": {"field": "kind"}})
 
     item = EvidenceItem(
         evidenceId=req.evidence_id,
@@ -483,8 +504,8 @@ def create_evidence_item(
         state.evidence_items[item.evidenceId] = item
 
     res = item.model_dump(by_alias=True, mode="json")
-    if req.idempotency_key:
-        evidence_state.idempotency[req.idempotency_key] = res
+    if idempotency_key:
+        evidence_state.idempotency[idempotency_key] = res
     return res
 
 
@@ -500,6 +521,7 @@ def initiate_upload(
     item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+    _authorize_evidence(item, current_user)
 
     storage_key = f"evidence/{item.taskId}/{item.stepId}/{evidence_id}/{req.storage_kind.lower()}"
     upload_id = object_store.initiate_multipart_upload(storage_key, req.content_type)
@@ -564,9 +586,29 @@ def complete_upload(
     session = state.upload_sessions.get(req.session_id)
     if not session or session["evidenceId"] != evidence_id:
         raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
+    if session["storageKind"] != req.storage_kind:
+        raise HTTPException(409, {"code": "STORAGE_KIND_MISMATCH", "message": "Upload completion does not match the initiated storage kind"})
+    expected_parts = set(range(1, session["totalParts"] + 1))
+    supplied_parts = {part.part_number for part in req.parts}
+    if supplied_parts != expected_parts:
+        raise HTTPException(422, {"code": "UPLOAD_PARTS_INCOMPLETE", "message": "Every initiated upload part must be supplied exactly once", "details": {"expected": sorted(expected_parts), "received": sorted(supplied_parts)}})
+    item = state.evidence_items.get(evidence_id)
+    if not item:
+        raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+    _authorize_evidence(item, current_user)
 
     parts_payload = [{"PartNumber": p.part_number, "ETag": p.etag} for p in req.parts]
     object_store.complete_multipart_upload(session["storageKey"], session["uploadId"], parts_payload)
+    try:
+        stored_bytes = object_store.get_object_bytes(session["storageKey"])
+        actual_sha256 = compute_sha256_bytes(stored_bytes)
+        if len(stored_bytes) != req.size_bytes or actual_sha256.lower() != req.sha256.lower():
+            object_store.delete_object(session["storageKey"])
+            raise HTTPException(422, {"code": "UPLOAD_INTEGRITY_MISMATCH", "message": "Uploaded bytes do not match the declared size or SHA-256"})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, {"code": "UPLOAD_NOT_READABLE", "message": "Completed media could not be verified"}) from exc
 
     with state.transaction():
         session["status"] = "COMPLETED"
@@ -596,6 +638,8 @@ def abort_upload(
 
     with state.transaction():
         session = state.upload_sessions.pop(session_id, None)
+        if session and session["evidenceId"] != evidence_id:
+            raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "Upload session not found"})
     if session:
         object_store.abort_multipart_upload(session["storageKey"], session["uploadId"])
     return {"status": "aborted"}
@@ -613,6 +657,7 @@ def finalize_evidence(
     item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+    _authorize_evidence(item, current_user)
 
     # Find step target
     target_lat = 28.6139
@@ -665,6 +710,18 @@ def finalize_evidence(
     return verified_item.model_dump(by_alias=True, mode="json")
 
 
+@router.get("/api/v1/evidence/preview-media")
+def preview_media(key: str = Query(...)):
+    """Serve local object bytes before the dynamic evidence-detail route."""
+    if isinstance(object_store, MemoryObjectStore):
+        try:
+            return Response(content=object_store.get_object_bytes(key),
+                            media_type=object_store.get_object_metadata(key).get("content_type", "image/jpeg"))
+        except KeyError:
+            raise HTTPException(404, {"code": "MEDIA_NOT_FOUND", "message": "Media not found"})
+    raise HTTPException(400, {"code": "NOT_SUPPORTED", "message": "Use presigned S3 URLs in production"})
+
+
 @router.get("/api/v1/evidence/{evidence_id}")
 def get_evidence_details(
     evidence_id: str, current_user: UserAccount = Depends(get_current_user)
@@ -675,6 +732,7 @@ def get_evidence_details(
     item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
+    _authorize_evidence(item, current_user)
 
     data = item.model_dump(by_alias=True, mode="json")
     if item.originalStorageKey:
@@ -696,6 +754,8 @@ def list_evidence(
 
     results = []
     for item in state.evidence_items.values():
+        if str(current_user.role).upper() not in {"ADMIN", "CONTROL_OFFICER", "MANAGEMENT"} and item.supervisorId != current_user.user_id:
+            continue
         if status and item.status.value != status:
             continue
         if task_id and item.taskId != task_id:
@@ -720,6 +780,7 @@ def review_flagged_evidence(
     item = state.evidence_items.get(evidence_id)
     if not item:
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence not found"})
+    _authorize_evidence(item, current_user)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -753,25 +814,11 @@ def review_flagged_evidence(
     return item.model_dump(by_alias=True, mode="json")
 
 
-@router.get("/api/v1/evidence/preview-media")
-def preview_media(key: str = Query(...)):
-    """Serve mock object store bytes for preview during tests and development."""
-    if isinstance(object_store, MemoryObjectStore):
-        try:
-            data = object_store.get_object_bytes(key)
-            meta = object_store.get_object_metadata(key)
-            content_type = meta.get("content_type", "image/jpeg")
-            return Response(content=data, media_type=content_type)
-        except KeyError:
-            raise HTTPException(404, {"code": "MEDIA_NOT_FOUND", "message": "Media not found"})
-    raise HTTPException(400, {"code": "NOT_SUPPORTED", "message": "Use presigned S3 URLs in production"})
-
-
 class DemoEvidenceUploadRequest(AuthDTO):
     task_id: str = "ENG-1001"
     step_id: str | None = None
     kind: EvidenceKind = EvidenceKind.PHOTO
-    scenario: str = "COMPLIANT"  # COMPLIANT, FLAGGED_GPS, FLAGGED_ACCURACY
+    scenario: Literal["COMPLIANT", "FLAGGED_GPS", "FLAGGED_ACCURACY"] = "COMPLIANT"
     exception_reason: str | None = None
     media_base64: str | None = None
 
@@ -835,15 +882,20 @@ def demo_upload_evidence(
         reason = req.exception_reason
 
     # Resolve media bytes
-    if req.media_base64:
+    if req.media_base64 is not None:
         try:
-            media_bytes = base64.b64decode(req.media_base64)
-        except Exception as exc:
+            media_bytes = base64.b64decode(req.media_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
             raise HTTPException(400, {"code": "INVALID_IMAGE_DATA", "message": "Failed to decode base64 media payload"}) from exc
     elif req.kind == EvidenceKind.VIDEO:
         media_bytes = SAMPLE_MP4_WALKTHROUGH
     else:
         media_bytes = SAMPLE_JPEG_TRACK
+
+    valid_media = (media_bytes.startswith(b"\xff\xd8\xff") if req.kind == EvidenceKind.PHOTO
+                   else b"ftyp" in media_bytes[:32])
+    if not valid_media:
+        raise HTTPException(422, {"code": "INVALID_MEDIA_FORMAT", "message": "Choose a JPEG photo or MP4 video matching the evidence kind"})
 
     content_type = "video/mp4" if req.kind == EvidenceKind.VIDEO else "image/jpeg"
     sha256_hash = compute_sha256_bytes(media_bytes)
@@ -913,5 +965,5 @@ def demo_upload_evidence(
 
     res = verified_item.model_dump(by_alias=True, mode="json")
     res["proofDownloadUrl"] = object_store.generate_presigned_download_url(storage_key)
-    return res
+    return {"evidence": res, "manifest": verified_item.canonicalManifest.model_dump(by_alias=True, mode="json")}
 

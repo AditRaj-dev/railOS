@@ -167,6 +167,36 @@ class TicketApiTests(unittest.TestCase):
         response = self.client.get("/api/v1/block-requests/REQ-DOES-NOT-EXIST", headers=ENGG_HEADERS)
         self.assertEqual(response.status_code, 404)
 
+    def test_ticket_status_actions_are_authorized_and_audited(self):
+        response = self.client.post("/api/v1/block-requests", headers=ENGG_HEADERS, json=base_payload())
+        self.assertEqual(response.status_code, 200, response.text)
+        request_id = response.json()["requestId"]
+        self.assertEqual(response.json()["allowedActions"], ["CANCEL"])
+        control_view = self.client.get(f"/api/v1/block-requests/{request_id}", headers=CONTROL_HEADERS)
+        self.assertIn("ACCEPT", control_view.json()["allowedActions"])
+
+        missing_reason = self.client.patch(
+            f"/api/v1/block-requests/{request_id}/status", headers=CONTROL_HEADERS,
+            json={"status": "READY", "reason": " "},
+        )
+        self.assertEqual(missing_reason.status_code, 422)
+        self.assertEqual(missing_reason.json()["error"]["code"], "REASON_REQUIRED")
+
+        accepted = self.client.patch(
+            f"/api/v1/block-requests/{request_id}/status", headers=CONTROL_HEADERS,
+            json={"status": "READY", "reason": "Control reviewed the request"},
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertEqual(accepted.json()["status"], "READY")
+        self.assertEqual(accepted.json()["allowedActions"], ["CANCEL"])
+        self.assertTrue(any(event["type"] == "BLOCK_REQUEST_STATUS_UPDATED" and event["entityId"] == request_id for event in main.state.events))
+
+        forbidden = self.client.patch(
+            f"/api/v1/block-requests/{request_id}/status", headers=SNT_HEADERS,
+            json={"status": "CANCELLED", "reason": "Wrong department"},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

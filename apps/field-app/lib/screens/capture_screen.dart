@@ -5,7 +5,9 @@ import '../l10n/app_strings.dart';
 import '../models/evidence_models.dart';
 import '../services/api_client.dart';
 import '../services/evidence_processor.dart';
+import '../shell/emergency_action.dart';
 import '../theme/railos_tokens.dart';
+import '../theme/railos_widgets.dart';
 
 double haversineDistanceMeters({
   required double latitude1,
@@ -193,7 +195,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   Future<void> _submitEvidence() async {
-    final evidence = widget.apiClient.queue.pendingQueue.last;
+    final queue = widget.apiClient.queue.pendingQueue;
+    if (queue.isEmpty) {
+      setState(() => _captureError = 'No evidence record found to upload.');
+      return;
+    }
+    final evidence = queue.last;
     setState(() {
       _isSubmitting = true;
       _uploadProgress = null;
@@ -226,6 +233,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
           backgroundColor: RailOSTokens.status_critical_bg,
         ),
       );
+      // Finding K: Do not pop with evidence when upload fails!
+      return;
     }
     if (!mounted) return;
     Navigator.pop(context, evidence);
@@ -384,6 +393,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ),
         ),
         iconTheme: const IconThemeData(color: RailOSTokens.text_secondary),
+        actions: [
+          EmergencyAppBarAction(apiClient: widget.apiClient),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -441,91 +454,43 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         // Freshness pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isFreshGps
-                                ? RailOSTokens.status_ok_bg
-                                : RailOSTokens.status_caution_bg,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isFreshGps
-                                  ? RailOSTokens.status_ok_border
-                                  : RailOSTokens.status_caution_border,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.gps_fixed,
-                                size: 13,
-                                color: isFreshGps
-                                    ? RailOSTokens.status_ok_fg
-                                    : RailOSTokens.status_caution_fg,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                '${_fixAgeSeconds}s ago (±${_accuracyMeters}m)',
-                                style: TextStyle(
-                                  color: isFreshGps
-                                      ? RailOSTokens.status_ok_text
-                                      : RailOSTokens.status_caution_text,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+                        RailOSPill(
+                          label: '${_fixAgeSeconds}s ago (±${_accuracyMeters}m)',
+                          icon: Icons.gps_fixed,
+                          bg: isFreshGps
+                              ? RailOSTokens.status_ok_bg
+                              : RailOSTokens.status_caution_bg,
+                          border: isFreshGps
+                              ? RailOSTokens.status_ok_border
+                              : RailOSTokens.status_caution_border,
+                          fg: isFreshGps
+                              ? RailOSTokens.status_ok_fg
+                              : RailOSTokens.status_caution_fg,
+                          textColor: isFreshGps
+                              ? RailOSTokens.status_ok_text
+                              : RailOSTokens.status_caution_text,
                         ),
 
                         // Radius match pill
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _isWithinRadius
-                                ? RailOSTokens.status_ok_bg
-                                : RailOSTokens.status_warning_bg,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: _isWithinRadius
-                                  ? RailOSTokens.status_ok_border
-                                  : RailOSTokens.status_warning_border,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isWithinRadius
-                                    ? Icons.check
-                                    : Icons.warning_amber_rounded,
-                                size: 13,
-                                color: _isWithinRadius
-                                    ? RailOSTokens.status_ok_fg
-                                    : RailOSTokens.status_warning_fg,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _isWithinRadius
-                                    ? '${_distanceToTarget.toStringAsFixed(1)}m Match'
-                                    : '${_distanceToTarget.toStringAsFixed(1)}m Outside',
-                                style: TextStyle(
-                                  color: _isWithinRadius
-                                      ? RailOSTokens.status_ok_text
-                                      : RailOSTokens.status_warning_text,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
+                        RailOSPill(
+                          label: _isWithinRadius
+                              ? '${_distanceToTarget.toStringAsFixed(1)}m Match'
+                              : '${_distanceToTarget.toStringAsFixed(1)}m Outside',
+                          icon: _isWithinRadius
+                              ? Icons.check
+                              : Icons.warning_amber_rounded,
+                          bg: _isWithinRadius
+                              ? RailOSTokens.status_ok_bg
+                              : RailOSTokens.status_warning_bg,
+                          border: _isWithinRadius
+                              ? RailOSTokens.status_ok_border
+                              : RailOSTokens.status_warning_border,
+                          fg: _isWithinRadius
+                              ? RailOSTokens.status_ok_fg
+                              : RailOSTokens.status_warning_fg,
+                          textColor: _isWithinRadius
+                              ? RailOSTokens.status_ok_text
+                              : RailOSTokens.status_warning_text,
                         ),
                       ],
                     ),
@@ -560,7 +525,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  'RAILOS PROOF // TASK: ${widget.step.taskId} | STEP: ${widget.step.stepId}',
+                                  'RAILBLOCK PROOF // TASK: ${widget.step.taskId} | STEP: ${widget.step.stepId}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -722,28 +687,37 @@ class _CaptureScreenState extends State<CaptureScreen> {
                           child: SizedBox(
                             width: 68,
                             height: 68,
-                            child: FloatingActionButton(
-                              elevation: 0,
-                              backgroundColor: _isWithinRadius
-                                  ? RailOSTokens.accent
-                                  : RailOSTokens.status_caution_fg,
-                              foregroundColor: RailOSTokens.bg_canvas,
-                              onPressed: _isProcessing ? null : _captureMedia,
-                              child: _isProcessing
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        color: RailOSTokens.bg_canvas,
-                                        strokeWidth: 2,
+                            child: Semantics(
+                              button: true,
+                              label: widget.step.requiresPhoto
+                                  ? 'Capture photo proof'
+                                  : 'Record video proof',
+                              child: FloatingActionButton(
+                                elevation: 0,
+                                tooltip: widget.step.requiresPhoto
+                                    ? 'Capture photo proof'
+                                    : 'Record video proof',
+                                backgroundColor: _isWithinRadius
+                                    ? RailOSTokens.accent
+                                    : RailOSTokens.status_caution_fg,
+                                foregroundColor: RailOSTokens.bg_canvas,
+                                onPressed: _isProcessing ? null : _captureMedia,
+                                child: _isProcessing
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: RailOSTokens.bg_canvas,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        widget.step.requiresPhoto
+                                            ? Icons.camera_alt_outlined
+                                            : Icons.videocam_outlined,
+                                        size: 30,
                                       ),
-                                    )
-                                  : Icon(
-                                      widget.step.requiresPhoto
-                                          ? Icons.camera_alt_outlined
-                                          : Icons.videocam_outlined,
-                                      size: 30,
-                                    ),
+                              ),
                             ),
                           ),
                         ),

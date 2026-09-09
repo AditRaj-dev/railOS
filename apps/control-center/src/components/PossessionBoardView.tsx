@@ -9,6 +9,7 @@ import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { Modal } from './ui/Modal';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
+import { QueryState } from './ui/QueryState';
 
 type InlineAction = 'grant-clearance' | 'defer' | 'cancel' | 'close';
 
@@ -116,18 +117,19 @@ export function PossessionBoardView() {
 
       {notice && <div className="rounded border border-[var(--status-ok-border)] bg-[var(--status-ok-bg)] p-3 text-sm text-[var(--status-ok-text)]" role="status">{notice}</div>}
       {possessionMutation.isError && <div className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3 text-sm text-[var(--status-critical-text)]" role="alert">{possessionMutation.error.message}</div>}
-      {possessionsQuery.isLoading && <div className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-5 text-sm text-[var(--text-secondary)]" role="status">Loading possession state…</div>}
-      {possessionsQuery.isError && <div className="rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-4 text-sm text-[var(--status-critical-text)]" role="alert"><p className="font-semibold">Possession feed unavailable</p><p className="mt-1">{possessionsQuery.error.message}</p></div>}
 
-      {!possessionsQuery.isLoading && !possessionsQuery.isError && possessions.length === 0 && (
-        <div className="rounded border border-[var(--border-default)] bg-[var(--bg-panel)] p-8 text-center" role="status">
-          <ShieldCheck className="mx-auto h-8 w-8 text-[var(--text-muted)]" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">No possessions are open</p>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">Complete a plan sanction chain to open the day-of block records.</p>
-        </div>
-      )}
-
-      {possessions.length > 0 && (
+      <QueryState
+        isLoading={possessionsQuery.isLoading}
+        isError={possessionsQuery.isError}
+        error={possessionsQuery.error}
+        isEmpty={possessions.length === 0}
+        onRetry={() => { void possessionsQuery.refetch(); }}
+        loadingMessage="Loading possession state…"
+        errorMessage={`Possession feed unavailable: ${possessionsQuery.error?.message || 'Failed to load possessions.'}`}
+        emptyMessage="No possessions are open. Complete a plan sanction chain to open the day-of block records."
+        emptyIcon={<ShieldCheck className="mx-auto h-8 w-8 text-[var(--text-muted)]" aria-hidden="true" />}
+      >
+        {possessions.length > 0 && (
         <section aria-labelledby="possession-table-title" className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 id="possession-table-title" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-primary)]">Open possession records <span className="font-normal text-[var(--text-muted)]">({possessions.length})</span></h2>
@@ -160,7 +162,8 @@ export function PossessionBoardView() {
             </TableBody>
           </Table>
         </section>
-      )}
+        )}
+      </QueryState>
 
       <Modal
         open={Boolean(modal)}

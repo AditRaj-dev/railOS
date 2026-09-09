@@ -3,7 +3,7 @@ class AppStrings {
 
   static const Map<String, Map<String, String>> _localized = {
     'en': {
-      'app_title': 'RailOS Field Evidence',
+      'app_title': 'Railblock Field Evidence',
       'login_title': 'Field Supervisor Login',
       'emp_id_hint': 'Employee ID (e.g. EMP901)',
       'password_hint': 'Enter Password',
@@ -23,12 +23,12 @@ class AppStrings {
           'Enter Mandatory Operational Reason for Exception',
       'submit_evidence': 'Process & Submit Evidence',
       'retake_btn': 'Retake Media',
-      'evidence_strip_preview': 'RailOS Evidence Strip',
+      'evidence_strip_preview': 'Railblock Evidence Strip',
       'settings_lang': 'Language / भाषा',
       'sync_status': 'Offline Queue: {count} pending',
     },
     'hi': {
-      'app_title': 'रेलोस फील्ड साक्ष्य (RailOS)',
+      'app_title': 'रेलब्लॉक फील्ड साक्ष्य (Railblock)',
       'login_title': 'फील्ड सुपरवाइजर लॉगिन',
       'emp_id_hint': 'कर्मचारी आईडी (जैसे EMP901)',
       'password_hint': 'पासवर्ड दर्ज करें',
@@ -47,7 +47,7 @@ class AppStrings {
       'exception_reason_prompt': 'अपवाद का अनिवार्य परिचालन कारण दर्ज करें',
       'submit_evidence': 'साक्ष्य प्रोसेस एवं सबमिट करें',
       'retake_btn': 'पुनः फोटो/वीडियो लें',
-      'evidence_strip_preview': 'रेलोस साक्ष्य पट्टी (Evidence Strip)',
+      'evidence_strip_preview': 'रेलब्लॉक साक्ष्य पट्टी (Evidence Strip)',
       'settings_lang': 'Language / भाषा बदलें',
       'sync_status': 'ऑफलाइन कतार: {count} लंबित',
     },
