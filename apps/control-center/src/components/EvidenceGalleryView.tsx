@@ -221,7 +221,12 @@ export function EvidenceGalleryView() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filtered.map((item) => (
+          {filtered.map((item) => {
+            // The watermarked proof copy is what a reviewer should see, but an
+            // upload can land the original and lose the proof; showing the
+            // original beats showing an empty tile that reads as "no media".
+            const mediaUrl = item.proofDownloadUrl || item.originalDownloadUrl;
+            return (
             <button
               type="button"
               key={item.evidenceId}
@@ -229,11 +234,11 @@ export function EvidenceGalleryView() {
               className="group text-left rounded-lg border border-slate-800 bg-slate-900/70 overflow-hidden hover:border-sky-500/60 transition-colors"
             >
               <div className="relative aspect-video bg-slate-950 flex items-center justify-center overflow-hidden">
-                {item.proofDownloadUrl ? (
+                {mediaUrl ? (
                   item.kind === 'VIDEO' ? (
                     <>
                       <video
-                        src={item.proofDownloadUrl}
+                        src={mediaUrl}
                         muted
                         preload="metadata"
                         className="w-full h-full object-cover"
@@ -245,7 +250,7 @@ export function EvidenceGalleryView() {
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={item.proofDownloadUrl}
+                      src={mediaUrl}
                       alt={`Evidence ${item.evidenceId}`}
                       className="w-full h-full object-cover"
                     />
@@ -275,7 +280,8 @@ export function EvidenceGalleryView() {
                 <div className="text-[10px] text-slate-500 font-mono truncate">{item.supervisorId || 'Unknown supervisor'}</div>
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
 

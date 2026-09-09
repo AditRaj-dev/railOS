@@ -1064,6 +1064,7 @@ export interface EvidenceRecord {
   gpsAccuracyMeters?: number | null;
   originalSha256?: string;
   proofDownloadUrl?: string;
+  originalDownloadUrl?: string;
   proofSha256?: string;
   startLatitude?: number | null;
   startLongitude?: number | null;

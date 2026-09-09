@@ -38,6 +38,10 @@ export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceD
     }
   };
 
+  // Prefer the watermarked proof copy; fall back to the original so an
+  // evidence item whose proof upload failed still shows its media.
+  const mediaUrl = evidence.proofDownloadUrl || evidence.originalDownloadUrl;
+
   return (
     <Modal open onClose={onClose} title={`Evidence Audit: ${evidence.evidenceId}`} maxWidthClassName="max-w-3xl">
       <div className="space-y-6">
@@ -45,17 +49,17 @@ export function EvidenceDetailModal({ evidence, onClose, onReviewed }: EvidenceD
         <div className="space-y-2">
           <div className="text-xs font-mono uppercase text-slate-400">Captured Media Proof</div>
           <div className="relative bg-slate-950 border border-slate-800 rounded-lg p-3 flex flex-col items-center justify-center min-h-48">
-            {evidence.proofDownloadUrl ? (
+            {mediaUrl ? (
               evidence.kind === 'VIDEO' ? (
                 <video
-                  src={evidence.proofDownloadUrl}
+                  src={mediaUrl}
                   controls
                   className="max-h-64 rounded border border-slate-800"
                 />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={evidence.proofDownloadUrl}
+                  src={mediaUrl}
                   alt="Proof derivative"
                   className="max-h-64 object-contain rounded border border-slate-800"
                 />

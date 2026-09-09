@@ -783,6 +783,11 @@ def list_evidence(
         row = item.model_dump(by_alias=True, mode="json")
         if item.proofStorageKey:
             row["proofDownloadUrl"] = object_store.generate_presigned_download_url(item.proofStorageKey)
+        # The watermarked proof copy can be missing (an upload that failed
+        # after the original landed). Without the original the gallery has
+        # nothing to draw and the item looks like it has no media at all.
+        if item.originalStorageKey:
+            row["originalDownloadUrl"] = object_store.generate_presigned_download_url(item.originalStorageKey)
         results.append(row)
 
     return {"items": results, "count": len(results)}
