@@ -21,6 +21,9 @@ import {
   Shield,
   ShieldCheck,
   Gauge,
+  Eye,
+  CalendarCheck2,
+  XCircle,
 } from 'lucide-react';
 
 /** Semantic status token base (CSS custom property names, no # prefix) */
@@ -269,6 +272,73 @@ export const POSSESSION_STATE_TOKENS: Record<string, TokenDef> = {
     borderVar: '--status-critical-border',
     fgVar: '--status-critical-fg',
     textVar: '--status-critical-text',
+  },
+};
+
+/** Department ticket (BlockRequest) lifecycle -> token mapping. */
+export const BLOCK_REQUEST_STATUS_TOKENS: Record<string, TokenDef> = {
+  REQUESTED: {
+    token: 'info',
+    label: 'Requested',
+    icon: Clock,
+    bgVar: '--status-info-bg',
+    borderVar: '--status-info-border',
+    fgVar: '--status-info-fg',
+    textVar: '--status-info-text',
+  },
+  UNDER_REVIEW: {
+    token: 'caution',
+    label: 'Under review',
+    icon: Eye,
+    bgVar: '--status-caution-bg',
+    borderVar: '--status-caution-border',
+    fgVar: '--status-caution-fg',
+    textVar: '--status-caution-text',
+  },
+  READY: {
+    token: 'warning',
+    label: 'Ready',
+    icon: Zap,
+    bgVar: '--status-warning-bg',
+    borderVar: '--status-warning-border',
+    fgVar: '--status-warning-fg',
+    textVar: '--status-warning-text',
+  },
+  PLANNED: {
+    token: 'ok',
+    label: 'Planned',
+    icon: CalendarCheck2,
+    bgVar: '--status-ok-bg',
+    borderVar: '--status-ok-border',
+    fgVar: '--status-ok-fg',
+    textVar: '--status-ok-text',
+  },
+  REJECTED: {
+    token: 'critical',
+    label: 'Rejected',
+    icon: Ban,
+    bgVar: '--status-critical-bg',
+    borderVar: '--status-critical-border',
+    fgVar: '--status-critical-fg',
+    textVar: '--status-critical-text',
+  },
+  CANCELLED: {
+    token: 'blocked',
+    label: 'Cancelled',
+    icon: XCircle,
+    bgVar: '--status-blocked-bg',
+    borderVar: '--status-blocked-border',
+    fgVar: '--status-blocked-fg',
+    textVar: '--status-blocked-text',
+  },
+  COMPLETED: {
+    token: 'ok',
+    label: 'Completed',
+    icon: CheckCircle2,
+    bgVar: '--status-ok-bg',
+    borderVar: '--status-ok-border',
+    fgVar: '--status-ok-fg',
+    textVar: '--status-ok-text',
   },
 };
 

@@ -218,7 +218,7 @@ def login(req: LoginRequest):
             detail={"code": "ACCOUNT_DISABLED", "message": "Account has been disabled by an administrator"},
         )
 
-    access_token = create_access_token(user["userId"], user["role"], user["employeeId"])
+    access_token = create_access_token(user["userId"], user["role"], user["employeeId"], department=user.get("department"))
     raw_refresh, token_hash, expires_at = create_refresh_token()
 
     evidence_state.refresh_tokens[token_hash] = {
@@ -255,7 +255,7 @@ def refresh_token_endpoint(req: RefreshRequest):
     if not user or not user.get("active", True):
         raise HTTPException(status_code=403, detail={"code": "USER_INACTIVE", "message": "User inactive"})
 
-    access_token = create_access_token(user["userId"], user["role"], user["employeeId"])
+    access_token = create_access_token(user["userId"], user["role"], user["employeeId"], department=user.get("department"))
     raw_new_refresh, new_token_hash, expires_at = create_refresh_token()
     evidence_state.refresh_tokens[new_token_hash] = {
         "userId": user["userId"],

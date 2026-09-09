@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Circle, FileCheck2, History, Shield, Zap } from 'lucide-react';
 import { usePossession, usePossessionAction } from '@/lib/queries';
 import type { PossessionActionPayload } from '@/lib/api';
-import { useRailOSEventStream } from '@/lib/useRailOSEventStream';
 import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { Modal } from './ui/Modal';
@@ -42,7 +41,6 @@ export function PossessionDetailView({ possessionId }: { possessionId: string })
   const [deferredUntilUtc, setDeferredUntilUtc] = useState('');
   const [causeCategory, setCauseCategory] = useState('');
   const [notice, setNotice] = useState('');
-  useRailOSEventStream();
   const closeAction = useCallback(() => setActiveAction(''), []);
 
   const possession = possessionQuery.data;
@@ -114,6 +112,7 @@ export function PossessionDetailView({ possessionId }: { possessionId: string })
         <div className="flex items-center gap-2"><Zap className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><h2 id="possession-actions-title" className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-primary)]">Server-authorized actions</h2></div>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">Only actions returned by the API for this state and acting role are enabled.</p>
         <div className="mt-4 flex flex-wrap gap-2">{possession.allowedActions.length ? possession.allowedActions.map((action) => <button key={action} type="button" onClick={() => openAction(action)} disabled={actionMutation.isPending} className="min-h-11 rounded border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">{actionLabel(action)}</button>) : <span className="text-sm text-[var(--text-muted)]">No action is available to the current acting role at this stage.</span>}</div>
+        {possession.blockedActions?.length ? <ul className="mt-4 grid gap-2">{possession.blockedActions.map(({ action, reason }) => <li key={action} className="rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]"><span className="font-semibold text-[var(--text-primary)]">{actionLabel(action)}</span> is held: {reason}</li>)}</ul> : null}
       </section>
 
       <div className="grid gap-5 xl:grid-cols-2">

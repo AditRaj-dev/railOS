@@ -4,6 +4,12 @@
  * This module bridges that to user-visible dates and formatted times.
  */
 
+// ponytail: the API has no typed endpoint yet exposing horizonStartIso to the
+// browser (it lives on the server's ScenarioWorld dump only) — mirror the
+// backend's DEMO_EPOCH (apps/api/railos_api/main.py) until it is. Real
+// horizon-relative round-tripping still lives entirely in dateToMinute below.
+export const DEMO_EPOCH_ISO = '2026-09-09T00:00:00+05:30';
+
 /**
  * Convert horizon-relative minutes to an absolute Date.
  * @param horizonStartIso - ISO 8601 string marking minute 0 (typically IST)

@@ -11,7 +11,9 @@ import {
   useApprovePlan,
   useGenerateReplanning,
   useNetworkCatalog,
+  useBlockRequests,
 } from '@/lib/queries';
+import Link from 'next/link';
 import { toDisplayBlock, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import {
   Sparkles,
@@ -29,16 +31,48 @@ export const BlockPlannerView: React.FC = () => {
   const pendingEmergencyId = searchParams.get('emergencyId');
 
   const [safetyViolations, setSafetyViolations] = useState<string[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<ObjectiveMode>('BALANCED');
   const { selectedBlockId, setSelectedBlockId } = useRailOSStore();
 
   const { data: catalog } = useNetworkCatalog();
   const plansQuery = useBlockPlans();
+  const ticketsQuery = useBlockRequests({ status: 'REQUESTED' });
   const generateMutation = useGeneratePlan();
   const approveMutation = useApprovePlan();
   const replanMutation = useGenerateReplanning();
 
   const sectionNames = useMemo(() => buildSectionNameMap(catalog?.sections || []), [catalog]);
+
+  // Ticket-derived demand. Each open request carries a TKT-<requestId> task, so
+  // an assignment or an unassigned warning traces straight back to its ticket.
+  const ticketTasks = useMemo(
+    () => (ticketsQuery.data?.items || [])
+      .filter((request) => Boolean(request.linkedTaskId))
+      .map((request) => ({
+        taskId: request.linkedTaskId as string,
+        requestId: request.requestId,
+        department: request.department,
+        taskType: request.taskType,
+        severity: request.severity,
+      })),
+    [ticketsQuery.data]
+  );
+  const ticketCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    ticketTasks.forEach((task) => { counts[task.department] = (counts[task.department] || 0) + 1; });
+    return counts;
+  }, [ticketTasks]);
+  const selectedTicketTasks = useMemo(
+    () => selectedTaskIds.filter((taskId) => ticketTasks.some((task) => task.taskId === taskId)),
+    [selectedTaskIds, ticketTasks]
+  );
+  const toggleTicketTask = (taskId: string) => {
+    setSelectedTaskIds((current) => current.includes(taskId)
+      ? current.filter((id) => id !== taskId)
+      : [...current, taskId]);
+  };
 
   const candidatesForMode = useMemo(
     () => (plansQuery.data?.plans || []).filter((p) => p.objectiveProfile === selectedMode),
@@ -58,6 +92,8 @@ export const BlockPlannerView: React.FC = () => {
         corridorIds: ['GZB-ALJN'],
         objectiveProfile: selectedMode,
         planningHorizon: new Date().toISOString(),
+        // Empty selection means "everything planable", the previous behaviour.
+        taskIds: selectedTicketTasks.length ? selectedTicketTasks : undefined,
       },
       {
         onError: (err) => {
@@ -72,7 +108,25 @@ export const BlockPlannerView: React.FC = () => {
 
   const handleApprove = () => {
     if (!activePlan) return;
-    approveMutation.mutate({ planId: activePlan.planId });
+    setApprovalNotice(null);
+    approveMutation.mutate({ planId: activePlan.planId }, {
+      onSuccess: (result) => {
+        // One press signs one authority. The API answers 202 with the open
+        // chain until the last signature lands, and saying nothing made a
+        // working button look dead.
+        const chain = result as { requiredAuthorities?: string[]; signatures?: { authority: string }[]; complete?: boolean; status?: string };
+        if (chain?.status === 'APPROVED' || chain?.complete) {
+          setApprovalNotice('All required authorities have signed. Possessions are open.');
+          return;
+        }
+        const signed = new Set((chain?.signatures || []).map((signature) => signature.authority));
+        const outstanding = (chain?.requiredAuthorities || []).filter((authority) => !signed.has(authority));
+        setApprovalNotice(outstanding.length
+          ? `Your authority is recorded. Still outstanding: ${outstanding.join(', ')}. Continue on Plan Sanctions.`
+          : 'Your authority is recorded; the sanction chain is still open. Continue on Plan Sanctions.');
+      },
+      onError: (error) => setApprovalNotice(error.message),
+    });
   };
 
   const handleReplan = () => {
@@ -132,6 +186,61 @@ export const BlockPlannerView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <div className="p-4 rounded border border-slate-800 bg-slate-900/80 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
+            Ticket-derived demand ({ticketTasks.length} open)
+          </h3>
+          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+            {(['ENGG', 'SNT', 'TRD'] as const).map((dept) => (
+              <span key={dept} className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">{dept} {ticketCounts[dept] || 0}</span>
+            ))}
+            <Link href="/tickets" className="underline underline-offset-4 hover:text-slate-200">Open ticket hub</Link>
+          </div>
+        </div>
+        {ticketTasks.length === 0 ? (
+          <p className="text-[11px] font-mono text-slate-500 italic">No REQUESTED tickets. The optimizer will run over all planable tasks.</p>
+        ) : (
+          <>
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {ticketTasks.map((task) => (
+                <li key={task.taskId}>
+                  <label className="flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-2 py-1.5 text-[11px] font-mono text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedTaskIds.includes(task.taskId)}
+                      onChange={() => toggleTicketTask(task.taskId)}
+                    />
+                    <span className="font-bold text-slate-200">{task.taskId}</span>
+                    <span>{task.department} · {task.taskType.replace(/_/g, ' ')} · sev {task.severity}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] font-mono text-slate-500">
+              {selectedTicketTasks.length
+                ? `Run Optimizer will plan only these ${selectedTicketTasks.length} ticket task(s).`
+                : 'Select ticket tasks to plan only those; leave empty to plan everything.'}
+            </p>
+          </>
+        )}
+      </div>
+
+      {approvalNotice && (
+        <div
+          className="p-3 rounded border text-xs font-mono flex items-center justify-between gap-3"
+          style={{
+            backgroundColor: `var(--status-info-bg)`,
+            borderColor: `var(--status-info-border)`,
+            color: `var(--status-info-text)`,
+          }}
+          role="status"
+        >
+          <span>{approvalNotice}</span>
+          <Link href="/plans" className="underline underline-offset-4">Plan Sanctions</Link>
+        </div>
+      )}
 
       {safetyViolations.length > 0 && (
         <div

@@ -3,10 +3,12 @@
 import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRailOSStore } from '../store/railosStore';
-import { useBlockPlans, useTrains, useNetworkCatalog } from '@/lib/queries';
+import { useBlockPlans, useTrains, useNetworkCatalog, useBlockRequests } from '@/lib/queries';
+import Link from 'next/link';
+import { DEMO_EPOCH_ISO, formatMinute } from '@/lib/time';
 import { toDisplayBlock, toDisplayTrain, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import { DepartmentBadge } from './RailwayComponents';
-import { Clock, Train, Shield } from 'lucide-react';
+import { Clock, Train, Shield, Ticket } from 'lucide-react';
 
 export const TimelineGanttView: React.FC = () => {
   const router = useRouter();
@@ -14,6 +16,7 @@ export const TimelineGanttView: React.FC = () => {
   const { data: catalog } = useNetworkCatalog();
   const { data: plansData } = useBlockPlans();
   const { data: trainsData } = useTrains();
+  const { data: ticketsData } = useBlockRequests({ status: 'REQUESTED' });
 
   const hours = ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
   const startHour = 12;
@@ -38,6 +41,29 @@ export const TimelineGanttView: React.FC = () => {
   const trains = useMemo(
     () => ((trainsData || []) as Record<string, unknown>[]).map(toDisplayTrain),
     [trainsData]
+  );
+
+  // Requested demand is not a possession: it is drawn in its own lane, dashed,
+  // and labelled REQUESTED in words so the pattern is never the only carrier.
+  const demands = useMemo(
+    () => (ticketsData?.items || [])
+      .filter((request) => request.requestedStart != null && request.requestedEnd != null)
+      .map((request) => {
+        const start = Number(request.requestedStart);
+        const end = Number(request.requestedEnd);
+        return {
+          requestId: request.requestId,
+          department: request.department,
+          taskType: request.taskType,
+          taskId: request.linkedTaskId || null,
+          startMinute: start,
+          endMinute: end,
+          leftPct: Math.max(0, Math.min(100, (((start % 1440) - startHour * 60) / totalMinutes) * 100)),
+          widthPct: Math.max(1, Math.min(100, ((end - start) / totalMinutes) * 100)),
+          windowLabel: `${formatMinute(DEMO_EPOCH_ISO, start)} → ${formatMinute(DEMO_EPOCH_ISO, end)}`,
+        };
+      }),
+    [ticketsData, startHour, totalMinutes]
   );
 
   return (
@@ -114,6 +140,52 @@ export const TimelineGanttView: React.FC = () => {
                 );
               })}
             </div>
+          </div>
+
+          <div className="space-y-3 pt-4 border-t border-slate-800">
+            <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Ticket className="w-3.5 h-3.5" style={{ color: `var(--status-warning-fg)` }} /> Requested Demand (tickets, not sanctioned)
+            </div>
+
+            {demands.length === 0 ? (
+              <div className="h-10 rounded bg-slate-900/60 border border-dashed border-slate-700 flex items-center justify-center text-[11px] font-mono text-slate-500 italic">
+                No open ticket requests.
+              </div>
+            ) : (
+              // One row per request: requested windows overlap freely (nothing
+              // has been sanctioned yet), so stacking them in a single track
+              // would hide all but the last one drawn.
+              <div className="space-y-1.5">
+                {demands.map((demand) => (
+                  <div key={demand.requestId} className="relative h-8 rounded bg-slate-900/60 border border-dashed border-slate-700">
+                    <div
+                      style={{
+                        left: `${demand.leftPct}%`,
+                        width: `${demand.widthPct}%`,
+                        borderColor: `var(--status-warning-fg)`,
+                        backgroundColor: `var(--status-warning-bg)`,
+                        color: `var(--status-warning-text)`,
+                      }}
+                      className="absolute top-1 bottom-1 rounded border border-dashed px-1.5 text-[10px] font-mono leading-6 truncate"
+                    >
+                      {demand.department} · {demand.taskType.replace(/_/g, ' ')} · REQUESTED
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {demands.length > 0 && (
+              <ul className="grid gap-1.5 sm:grid-cols-2 text-[11px] font-mono text-slate-400">
+                {demands.map((demand) => (
+                  <li key={demand.requestId} className="rounded border border-slate-800 bg-slate-950 px-2 py-1.5">
+                    <Link href="/tickets" className="font-bold text-slate-200 underline underline-offset-4">{demand.requestId}</Link>
+                    {' '}· {demand.department} · {demand.taskType.replace(/_/g, ' ')} · REQUESTED · {demand.windowLabel}
+                    {demand.taskId && <> · task {demand.taskId}</>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="space-y-3 pt-4 border-t border-slate-800">

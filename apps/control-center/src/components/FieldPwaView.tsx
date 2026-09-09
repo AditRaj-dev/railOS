@@ -4,7 +4,6 @@ import React from 'react';
 import Link from 'next/link';
 import { AlertCircle, Eye, RefreshCw, Smartphone } from 'lucide-react';
 import { useMyPossessions } from '../lib/queries';
-import { useRailOSEventStream } from '../lib/useRailOSEventStream';
 import { StatusChip } from './StatusChip';
 import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
@@ -23,7 +22,6 @@ function formatUtc(value?: string | null): string {
  * the operational PWA; control staff can observe the same server state here.
  */
 export const FieldPwaView: React.FC = () => {
-  useRailOSEventStream();
   const possessions = useMyPossessions();
 
   return (

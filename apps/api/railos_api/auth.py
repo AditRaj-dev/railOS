@@ -89,6 +89,7 @@ class UserAccount(AuthDTO):
     employee_id: str
     name: str
     role: str
+    department: str | None = None
     email: str | None = None
     phone: str | None = None
     active: bool = True
@@ -119,6 +120,7 @@ def create_access_token(
     role: str,
     employee_id: str,
     expires_delta: timedelta | None = None,
+    department: str | None = None,
 ) -> str:
     """Create 15-minute access JWT."""
     now = datetime.now(timezone.utc)
@@ -132,6 +134,8 @@ def create_access_token(
         "jti": secrets.token_hex(16),
         "iss": "railos-auth",
     }
+    if department:
+        payload["department"] = department
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -178,6 +182,7 @@ def get_current_user(
             employeeId=emp,
             name=f"User {emp}",
             role=role,
+            department=payload.get("department"),
             active=True,
         )
 

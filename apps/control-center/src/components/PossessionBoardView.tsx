@@ -9,7 +9,6 @@ import { getTokenDef, POSSESSION_STATE_TOKENS } from './tokens';
 import { StatusChip } from './StatusChip';
 import { Modal } from './ui/Modal';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
-import { useRailOSEventStream } from '@/lib/useRailOSEventStream';
 
 type InlineAction = 'grant-clearance' | 'defer' | 'cancel' | 'close';
 
@@ -55,7 +54,6 @@ export function PossessionBoardView() {
   const [causeCategory, setCauseCategory] = useState('EXECUTION');
   const [notice, setNotice] = useState('');
 
-  useRailOSEventStream();
   const closeModal = useCallback(() => setModal(null), []);
 
   // A short local clock keeps the overrun visible between server events. The

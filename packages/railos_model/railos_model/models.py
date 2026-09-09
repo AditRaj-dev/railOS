@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from .enums import (
     MIN_MACHINE_BLOCK_MINUTES,
     BlockType,
+    BlockRequestStatus,
     Compatibility,
     Department,
     EvidenceKind,
@@ -651,6 +652,54 @@ class FitnessCertificate(BaseModel):
     def _validate_tsr_ladder(self) -> "FitnessCertificate":
         if self.tsrSpeedKmph not in {20, 45, 75}:
             raise ValueError("tsrSpeedKmph must be one of 20, 45, or 75 (HC-018)")
+        return self
+
+
+class BlockRequest(BaseModel):
+    """Canonical, auditable departmental request for a planning block.
+
+    ``linkedTaskId`` is the sole optimizer input produced by a request.  The
+    request keeps the human/workflow lifecycle and requested window separate
+    from the executable ``MaintenanceTask`` while sharing the same physical
+    location and task vocabulary.
+    """
+
+    requestId: str = Field(min_length=1)
+    department: Department
+    corridorId: str = Field(min_length=1)
+    sectionId: str = Field(min_length=1)
+    assetId: str = Field(min_length=1)
+    track: Track
+    kmStart: float = Field(ge=0)
+    kmEnd: float = Field(gt=0)
+    taskType: TaskType
+    severity: int = Field(ge=1, le=10)
+    criticality: int = Field(default=5, ge=1, le=10)
+    dueMinute: int = Field(ge=0)
+    estimatedDuration: int = Field(gt=0, description="requested work duration in minutes")
+    blockRequired: bool = True
+    blockType: BlockType = BlockType.TRAFFIC
+    requestedStart: int = Field(ge=0)
+    requestedEnd: int = Field(gt=0)
+    status: BlockRequestStatus = BlockRequestStatus.REQUESTED
+    linkedTaskId: str = Field(min_length=1)
+    requestedBy: str = Field(min_length=1)
+    requestedByRole: str = Field(min_length=1)
+    createdAtUtc: str = Field(min_length=1)
+    updatedAtUtc: str = Field(min_length=1)
+    reason: str = ""
+    provenance: DataProvenance = Field(default_factory=DataProvenance)
+
+    @model_validator(mode="after")
+    def _validate_window_and_location(self) -> "BlockRequest":
+        if self.kmEnd <= self.kmStart:
+            raise ValueError("kmEnd must be greater than kmStart")
+        if self.requestedEnd <= self.requestedStart:
+            raise ValueError("requestedEnd must be greater than requestedStart")
+        if self.estimatedDuration > self.requestedEnd - self.requestedStart:
+            raise ValueError("estimatedDuration must fit inside the requested window")
+        if self.dueMinute < self.requestedEnd:
+            raise ValueError("dueMinute must be at or after requestedEnd")
         return self
 
 

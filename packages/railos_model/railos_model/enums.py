@@ -120,6 +120,23 @@ class TaskStatus(StrEnum):
     DEFERRED = "DEFERRED"
 
 
+class BlockRequestStatus(StrEnum):
+    """Lifecycle of departmental demand before/through block planning.
+
+    A request is planning intent, never operational authority.  In particular,
+    ``REQUESTED`` and ``READY`` must remain visually and semantically distinct
+    from an approved possession/plan.
+    """
+
+    REQUESTED = "REQUESTED"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    READY = "READY"
+    PLANNED = "PLANNED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
+
+
 class ObjectiveProfile(StrEnum):
     SAFETY_FIRST = "SAFETY_FIRST"
     BALANCED = "BALANCED"
@@ -221,4 +238,3 @@ class PossessionState(StrEnum):
     FIT_CERTIFIED = "FIT_CERTIFIED"
     CLEARED = "CLEARED"
     ABANDONED = "ABANDONED"
-

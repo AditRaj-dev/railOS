@@ -48,6 +48,12 @@ const queryKeys = {
     defectsWithFilter: (filter?: Record<string, string>) =>
       ['maintenance', 'defects', filter].filter(Boolean),
   },
+  blockRequests: {
+    all: ['blockRequests'] as const,
+    list: (filter?: Record<string, string>) => ['blockRequests', 'list', filter].filter(Boolean),
+    detail: (requestId: string) => ['blockRequests', 'detail', requestId] as const,
+    taskTypes: ['blockRequests', 'taskTypes'] as const,
+  },
   planning: {
     blockWindows: ['planning', 'blockWindows'] as const,
     blockWindowsForSection: (sectionId?: string) =>
@@ -222,6 +228,64 @@ export function useTrains(): UseQueryResult<unknown[], api.RailOSApiError> {
     queryKey: queryKeys.trains.all,
     queryFn: () => api.fetchTrains(),
     staleTime: 60 * 1000,
+  });
+}
+
+// ============================================================================
+// Department ticket queries
+// ============================================================================
+
+/** Task types and their statutory duration floors; effectively static. */
+export function useTicketTaskTypes(): UseQueryResult<api.TicketTaskType[], api.RailOSApiError> {
+  return useQuery({
+    queryKey: queryKeys.blockRequests.taskTypes,
+    queryFn: () => api.fetchTicketTaskTypes(),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useBlockRequests(filter?: api.BlockRequestFilters): UseQueryResult<
+  { items: api.BlockRequest[]; count: number; synthetic?: boolean },
+  api.RailOSApiError
+> {
+  const queryFilter = filter
+    ? Object.fromEntries(Object.entries(filter).filter(([, value]) => Boolean(value))) as Record<string, string>
+    : undefined;
+  return useQuery({
+    queryKey: queryKeys.blockRequests.list(queryFilter),
+    queryFn: () => api.fetchBlockRequests(filter),
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useBlockRequest(
+  requestId: string,
+  options?: { enabled?: boolean }
+): UseQueryResult<api.BlockRequest, api.RailOSApiError> {
+  return useQuery({
+    queryKey: queryKeys.blockRequests.detail(requestId),
+    queryFn: () => api.fetchBlockRequest(requestId),
+    enabled: Boolean(requestId) && options?.enabled !== false,
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useCreateBlockRequest(): UseMutationResult<
+  api.BlockRequest,
+  api.RailOSApiError,
+  api.CreateBlockRequestPayload
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.createBlockRequest,
+    onSuccess: (request) => {
+      queryClient.setQueryData(queryKeys.blockRequests.detail(request.requestId), request);
+      queryClient.invalidateQueries({ queryKey: queryKeys.blockRequests.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.maintenance.tasks });
+      queryClient.invalidateQueries({ queryKey: queryKeys.planning.blockPlans });
+      queryClient.invalidateQueries({ queryKey: queryKeys.planning.blockWindows });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.summary });
+    },
   });
 }
 

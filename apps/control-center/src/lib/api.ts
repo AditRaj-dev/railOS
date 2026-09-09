@@ -98,6 +98,71 @@ export interface RailOSPlan {
   [key: string]: unknown;
 }
 
+/** Canonical department codes used by the BlockRequest API and optimizer. */
+export type DepartmentCode = 'ENGG' | 'SNT' | 'TRD';
+
+export type BlockRequestStatus =
+  | 'DRAFT'
+  | 'REQUESTED'
+  | 'ACCEPTED'
+  | 'PLANNED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+/**
+ * Departmental planning intent. The linked task is the canonical optimizer
+ * input; a request is never a second, frontend-only task representation.
+ */
+export interface BlockRequest {
+  requestId: string;
+  department: DepartmentCode;
+  status: BlockRequestStatus | string;
+  corridorId: string;
+  sectionId: string;
+  track: string;
+  kmStart: number;
+  kmEnd: number;
+  taskType: string;
+  severity: number;
+  estimatedDuration: number;
+  blockType: string;
+  requestedStart?: string | null;
+  requestedEnd?: string | null;
+  earliestRequestedStart?: string | null;
+  latestRequestedEnd?: string | null;
+  linkedTaskId?: string | null;
+  plannedBlockId?: string | null;
+  planId?: string | null;
+  actor?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  provenance?: string | null;
+  synthetic?: boolean;
+  [key: string]: unknown;
+}
+
+export interface CreateBlockRequestPayload {
+  department: DepartmentCode;
+  corridorId: string;
+  sectionId: string;
+  track: string;
+  kmStart: number;
+  kmEnd: number;
+  taskType: string;
+  severity: number;
+  estimatedDuration: number;
+  blockType: string;
+  /** Integer minutes relative to the scenario horizon start, per BlockRequestCreate (extra="forbid"). */
+  requestedStart: number;
+  requestedEnd: number;
+}
+
+export interface BlockRequestFilters {
+  department?: DepartmentCode;
+  status?: string;
+  sectionId?: string;
+}
+
 export interface PossessionTransitionRecord {
   transitionId: string;
   fromState: PossessionState;
@@ -164,6 +229,7 @@ export interface PossessionView {
   overrunMinutesLive: number;
   handbackChecklist: Array<{ item: string; satisfied: boolean; rule: string }>;
   allowedActions: string[];
+  blockedActions?: { action: string; reason: string }[];
   [key: string]: unknown;
 }
 
@@ -550,6 +616,92 @@ export async function fetchDefects(filter?: {
   const path = `/api/v1/defects${qs ? '?' + qs : ''}`;
   const data = await fetchApi<{ items?: unknown[]; defects?: unknown[] }>(path);
   return { defects: data.items || data.defects || [] };
+}
+
+function requestValue(record: Record<string, unknown>, camel: string, snake: string): unknown {
+  return record[camel] ?? record[snake];
+}
+
+/**
+ * Keep the browser contract camelCase while accepting the API's snake_case
+ * aliases during the rollout. This avoids lossy ticket adapters in views.
+ */
+export function normalizeBlockRequest(value: Record<string, unknown>): BlockRequest {
+  return {
+    ...value,
+    requestId: String(requestValue(value, 'requestId', 'request_id') ?? ''),
+    department: String(value.department ?? 'ENGG') as DepartmentCode,
+    status: String(value.status ?? 'REQUESTED'),
+    corridorId: String(requestValue(value, 'corridorId', 'corridor_id') ?? ''),
+    sectionId: String(requestValue(value, 'sectionId', 'section_id') ?? ''),
+    track: String(value.track ?? ''),
+    kmStart: Number(requestValue(value, 'kmStart', 'km_start') ?? 0),
+    kmEnd: Number(requestValue(value, 'kmEnd', 'km_end') ?? 0),
+    taskType: String(requestValue(value, 'taskType', 'task_type') ?? ''),
+    severity: Number(value.severity ?? 0),
+    estimatedDuration: Number(requestValue(value, 'estimatedDuration', 'estimated_duration') ?? 0),
+    blockType: String(requestValue(value, 'blockType', 'block_type') ?? ''),
+    requestedStart: requestValue(value, 'requestedStart', 'requested_start') as string | null | undefined,
+    requestedEnd: requestValue(value, 'requestedEnd', 'requested_end') as string | null | undefined,
+    earliestRequestedStart: requestValue(value, 'earliestRequestedStart', 'earliest_requested_start') as string | null | undefined,
+    latestRequestedEnd: requestValue(value, 'latestRequestedEnd', 'latest_requested_end') as string | null | undefined,
+    linkedTaskId: requestValue(value, 'linkedTaskId', 'linked_task_id') as string | null | undefined,
+    plannedBlockId: requestValue(value, 'plannedBlockId', 'planned_block_id') as string | null | undefined,
+    planId: requestValue(value, 'planId', 'plan_id') as string | null | undefined,
+    createdAt: requestValue(value, 'createdAt', 'created_at') as string | null | undefined,
+    updatedAt: requestValue(value, 'updatedAt', 'updated_at') as string | null | undefined,
+    provenance: value.provenance as string | null | undefined,
+    synthetic: Boolean(value.synthetic),
+  };
+}
+
+export interface TicketTaskType {
+  taskType: string;
+  department: DepartmentCode;
+  minDurationMinutes: number;
+  requiresPTW: boolean;
+  requiresT351: boolean;
+  requiresCorrespondenceTest: boolean;
+}
+
+/** Per-department task types plus their HC-002 duration floors, server-owned. */
+export async function fetchTicketTaskTypes(): Promise<TicketTaskType[]> {
+  const data = await fetchApi<{ items?: TicketTaskType[] }>('/api/v1/block-requests/task-types');
+  return data.items || [];
+}
+
+/** List BlockRequest records without inventing a parallel maintenance-task model. */
+export async function fetchBlockRequests(filter?: BlockRequestFilters): Promise<{
+  items: BlockRequest[];
+  count: number;
+  synthetic?: boolean;
+}> {
+  const params = new URLSearchParams();
+  if (filter?.department) params.set('department', filter.department);
+  if (filter?.status) params.set('status', filter.status);
+  if (filter?.sectionId) params.set('sectionId', filter.sectionId);
+  const query = params.toString();
+  const data = await fetchApi<{
+    items?: Record<string, unknown>[];
+    blockRequests?: Record<string, unknown>[];
+    count?: number;
+    synthetic?: boolean;
+  }>(`/api/v1/block-requests${query ? `?${query}` : ''}`);
+  const items = (data.items || data.blockRequests || []).map(normalizeBlockRequest);
+  return { items, count: data.count ?? items.length, synthetic: data.synthetic };
+}
+
+export async function fetchBlockRequest(requestId: string): Promise<BlockRequest> {
+  const data = await fetchApi<Record<string, unknown>>(`/api/v1/block-requests/${encodeURIComponent(requestId)}`);
+  return normalizeBlockRequest(data);
+}
+
+export async function createBlockRequest(payload: CreateBlockRequestPayload): Promise<BlockRequest> {
+  const data = await fetchApi<Record<string, unknown>>('/api/v1/block-requests', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return normalizeBlockRequest(data);
 }
 
 /**

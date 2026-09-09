@@ -13,15 +13,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from railos_data import geometry_intersects_bbox
 from railos_model import (
-    Asset, AuthoritySignature, BlockBurst, BlockType, BlockWindow,
-    CorrespondenceTest, Corridor, Defect, Dependency, Department,
+    Asset, AuthoritySignature, BlockBurst, BlockRequest, BlockRequestStatus,
+    BlockType, BlockWindow,
+    CorrespondenceTest, Corridor, DataProvenance, Defect, Dependency, Department,
     EvidenceItem, FitnessCertificate, FormT351, GoodsForecast, MaintenanceTask,
+    MachineType,
     NetworkCatalog, ObjectiveProfile, PermitToWork, Plan, PlanStatus,
     Possession, PossessionState, PossessionTransition, ProtectionRecord,
     Resource, SanctionAuthority, SanctionChain, ScenarioWorld, Severity,
     SignatureDecision, TaskStatus, TaskType, Track, TrainMovement,
     WorkExecutionStatus, WorkStep,
 )
+from railos_model.enums import MIN_MACHINE_BLOCK_MINUTES
+from .auth import decode_access_token
 from .roles import OPERATIONAL_ROLES as VALID_ROLES, normalize_role
 from .possession import (
     AUTHORITY_ROLES,
@@ -47,6 +51,8 @@ DEMO_EPOCH = "2026-09-09T00:00:00+05:30"
 DEMO_NOW = "2026-09-08T06:00:00+00:00"
 
 NOTIFICATION_ROUTING: dict[str, str] = {
+    "BLOCK_REQUEST_CREATED": "CONTROL_OFFICER",
+    "BLOCK_REQUEST_STATUS_UPDATED": "CONTROL_OFFICER",
     "T351_REQUESTED": "STATION_MASTER",
     "T351_ISSUED": "STATION_MASTER",
     "T351_ENDORSED": "FIELD_SUPERVISOR",
@@ -98,7 +104,7 @@ COLLECTIONS = (
     "windows", "resources", "dependencies", "plans", "plan_versions",
     "runs", "notifications", "idempotency", "emergencies", "assignments",
     "ingestion_records", "sanctions", "sanction_versions", "possessions",
-    "block_bursts", "evidence_items", "work_steps", "upload_sessions",
+    "block_bursts", "block_requests", "evidence_items", "work_steps", "upload_sessions",
 )
 
 def camel(value: str) -> str:
@@ -113,6 +119,38 @@ class PlanRequest(DTO):
     objective: ObjectiveProfile = ObjectiveProfile.BALANCED
     planning_horizon: str = "WEEKLY"
     task_ids: list[str] | None = None
+
+
+class BlockRequestCreate(DTO):
+    """Client input for the guided ticket composer.
+
+    The server owns optimizer flags (machine, PTW/T351, escorts, and task
+    defaults); clients submit only the operational facts they know.
+    """
+
+    request_id: str | None = Field(default=None, min_length=1)
+    department: Department
+    corridor_id: str = "GZB-ALJN"
+    section_id: str
+    asset_id: str | None = None
+    track: Track
+    km_start: float = Field(ge=0)
+    km_end: float = Field(gt=0)
+    task_type: TaskType
+    severity: int = Field(ge=1, le=10)
+    criticality: int | None = Field(default=None, ge=1, le=10)
+    estimated_duration: int = Field(gt=0)
+    requested_start: int = Field(ge=0)
+    requested_end: int = Field(gt=0)
+    due_minute: int | None = Field(default=None, ge=0)
+    block_required: bool = True
+    block_type: BlockType = BlockType.TRAFFIC
+    reason: str = ""
+
+
+class BlockRequestStatusUpdate(DTO):
+    status: BlockRequestStatus
+    reason: str = ""
 
 class Decision(DTO):
     reason: str = ""
@@ -170,6 +208,104 @@ class DefectCreate(DTO):
 class User(DTO):
     user_id: str
     role: str
+    department: Department | None = None
+
+
+DEPARTMENT_TASK_TYPES: dict[Department, frozenset[TaskType]] = {
+    Department.ENGG: frozenset({
+        TaskType.TAMPING, TaskType.DEEP_SCREENING, TaskType.RAIL_REPLACEMENT,
+        TaskType.SLEEPER_RENEWAL, TaskType.TURNOUT_RENEWAL,
+        TaskType.DESTRESSING, TaskType.USFD_INSPECTION,
+    }),
+    Department.SNT: frozenset({
+        TaskType.POINT_MACHINE_MAINT, TaskType.TRACK_CIRCUIT_BOND,
+        TaskType.AXLE_COUNTER_CALIB, TaskType.GJ_REPLACEMENT,
+        TaskType.INTERLOCKING_WORK, TaskType.SNT_DISCONNECTION,
+        TaskType.SNT_RECONNECTION,
+    }),
+    Department.TRD: frozenset({
+        TaskType.OHE_INSPECTION, TaskType.CATENARY_REPLACEMENT,
+        TaskType.OHE_BRACKET_ADJUST, TaskType.OHE_SLEWING,
+        TaskType.TRD_ISOLATION,
+    }),
+}
+
+TASK_ASSET_TYPES: dict[TaskType, str] = {
+    TaskType.POINT_MACHINE_MAINT: "POINT",
+    TaskType.TURNOUT_RENEWAL: "POINT",
+    TaskType.AXLE_COUNTER_CALIB: "AXLE_COUNTER",
+    TaskType.OHE_INSPECTION: "OHE_ELEMENTARY_SECTION",
+    TaskType.CATENARY_REPLACEMENT: "OHE_ELEMENTARY_SECTION",
+    TaskType.OHE_BRACKET_ADJUST: "OHE_ELEMENTARY_SECTION",
+    TaskType.OHE_SLEWING: "OHE_ELEMENTARY_SECTION",
+    TaskType.TRD_ISOLATION: "OHE_ELEMENTARY_SECTION",
+}
+
+# These are deliberately server-owned.  A client may request a task type but
+# may not smuggle optimizer safety flags through the ticket payload.
+TASK_REQUIREMENTS: dict[TaskType, dict[str, Any]] = {
+    TaskType.TAMPING: {"machineType": MachineType.CSM, "requiresSntEscort": True, "imposesSpeedRestriction": True},
+    TaskType.DEEP_SCREENING: {"machineType": MachineType.BCM, "requiresPTW": True, "infringesAdjacent": True, "imposesSpeedRestriction": True},
+    TaskType.RAIL_REPLACEMENT: {"imposesSpeedRestriction": True},
+    TaskType.TURNOUT_RENEWAL: {"requiresPTW": True, "requiresT351": True, "imposesSpeedRestriction": True},
+    TaskType.POINT_MACHINE_MAINT: {"requiresT351": True},
+    TaskType.SNT_DISCONNECTION: {"requiresT351": True},
+    TaskType.SNT_RECONNECTION: {"requiresT351": True},
+    TaskType.OHE_INSPECTION: {"machineType": MachineType.TOWER_WAGON},
+    TaskType.CATENARY_REPLACEMENT: {"machineType": MachineType.TOWER_WAGON, "requiresPTW": True},
+    TaskType.TRD_ISOLATION: {"requiresPTW": True},
+    TaskType.OHE_BRACKET_ADJUST: {"requiresPTW": True},
+    TaskType.OHE_SLEWING: {"requiresPTW": True},
+}
+
+ROLE_DEPARTMENT: dict[str, Department] = {
+    "ENGINEERING": Department.ENGG,
+    "SIGNAL_TELECOM": Department.SNT,
+    "TRACTION": Department.TRD,
+}
+
+BROAD_TICKET_ROLES = frozenset({"ADMIN", "CONTROL_OFFICER", "PLANNER", "MANAGEMENT"})
+SUBMITTER_TICKET_ROLES = frozenset({
+    "ENGINEERING", "SIGNAL_TELECOM", "TRACTION", "FIELD_SUPERVISOR",
+    "ADMIN", "CONTROL_OFFICER", "PLANNER",
+})
+
+
+def _department_scope(user: User) -> Department | None:
+    """Return the server-owned department scope for a ticket actor."""
+    role_department = ROLE_DEPARTMENT.get(normalize_role(user.role))
+    if role_department is not None:
+        return role_department
+    return user.department
+
+
+def _authorize_ticket_department(user: User, department: Department) -> None:
+    role = normalize_role(user.role)
+    if role in BROAD_TICKET_ROLES:
+        return
+    scope = _department_scope(user)
+    if role not in SUBMITTER_TICKET_ROLES or scope is None:
+        raise HTTPException(403, {
+            "code": "DEPARTMENT_SCOPE_REQUIRED",
+            "message": "the authenticated department supervisor has no department scope",
+        })
+    if scope != department:
+        raise HTTPException(403, {
+            "code": "DEPARTMENT_FORBIDDEN",
+            "message": f"role '{role}' may only submit or view {scope.value} requests",
+            "details": {"department": department.value, "allowedDepartment": scope.value},
+        })
+
+
+def _request_provenance() -> DataProvenance:
+    return DataProvenance(
+        synthetic=True,
+        label="Synthetic Hackathon Simulation",
+        source="RailOS guided ticket intake",
+        sourceType="synthetic",
+        isOperationallyAuthoritative=False,
+        generatedAt=datetime.now(timezone.utc).isoformat(),
+    )
 
 class Repository:
     """Atomic deterministic repository used by demo and tests."""
@@ -312,15 +448,35 @@ class Repository:
             except asyncio.QueueFull: pass
         return event
 
-    def world(self):
+    def world(self, task_ids: list[str] | None = None):
+        request_by_task = {
+            request.linkedTaskId: request
+            for request in self.block_requests.values()
+            if isinstance(request, BlockRequest)
+        }
+        excluded_request_tasks = {
+            task_id
+            for task_id, request in request_by_task.items()
+            if request.status in {BlockRequestStatus.REJECTED, BlockRequestStatus.CANCELLED}
+        }
+        available_tasks = [
+            task for task_id, task in self.tasks.items()
+            if task_id not in excluded_request_tasks
+            and (task_ids is None or task_id in set(task_ids))
+        ]
+        available_task_ids = {task.taskId for task in available_tasks}
         return ScenarioWorld(
             horizonMinutes=getattr(self, "horizon_minutes", 4320),
             horizonStartIso=getattr(self, "horizon_start_iso", DEMO_EPOCH),
             corridors=list(self.corridors.values()), assets=list(self.assets.values()),
-            tasks=list(self.tasks.values()), defects=list(self.defects.values()),
+            tasks=available_tasks, defects=list(self.defects.values()),
             trains=list(self.trains.values()), goods=list(self.goods.values()),
             windows=list(self.windows.values()), resources=list(self.resources.values()),
-            dependencies=list(self.dependencies.values()),
+            dependencies=[
+                dependency for dependency in self.dependencies.values()
+                if dependency.predecessorTaskId in available_task_ids
+                and dependency.successorTaskId in available_task_ids
+            ],
         )
 
     def serializable(self):
@@ -342,6 +498,7 @@ class PostgresRepository(Repository):
     # (the memory backend would never expose that failure).
     model_types = {
         "corridors": Corridor, "assets": Asset, "tasks": MaintenanceTask,
+        "block_requests": BlockRequest,
         "defects": Defect, "trains": TrainMovement, "windows": BlockWindow,
         "goods": GoodsForecast, "resources": Resource, "dependencies": Dependency,
         "plans": Plan, "plan_versions": Plan,
@@ -442,11 +599,47 @@ app.add_middleware(
 from .evidence_routes import router as evidence_router
 app.include_router(evidence_router)
 
-def auth(user:str|None=Header(None,alias="X-RailOS-User"), role:str|None=Header(None,alias="X-RailOS-Role")):
-    if not user: raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
+def auth(
+    user: str | None = Header(None, alias="X-RailOS-User"),
+    role: str | None = Header(None, alias="X-RailOS-Role"),
+    department: str | None = Header(None, alias="X-RailOS-Department"),
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """Authenticate both real JWT sessions and the local demo headers.
+
+    The control-center historically used synthetic headers for the planning
+    API while the login flow uses Bearer JWTs.  Keeping this compatibility
+    boundary in one dependency prevents ticket intake from silently working
+    only when logged out.
+    """
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            raise HTTPException(401, {"code": "TOKEN_INVALID", "message": "Bearer token is required"})
+        payload = decode_access_token(token)
+        user_id = payload.get("sub")
+        normalized = normalize_role(payload.get("role"))
+        if not user_id:
+            raise HTTPException(401, {"code": "TOKEN_INVALID", "message": "Missing token subject"})
+        if normalized not in VALID_ROLES:
+            raise HTTPException(403, {"code": "FORBIDDEN", "message": "token role is invalid"})
+        token_department = payload.get("department")
+        try:
+            parsed_department = Department(token_department) if token_department else None
+        except ValueError as exc:
+            raise HTTPException(403, {"code": "FORBIDDEN", "message": "token department is invalid"}) from exc
+        return User(userId=user_id, role=normalized, department=parsed_department)
+
+    if not user:
+        raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
     normalized = normalize_role(role)
-    if normalized not in VALID_ROLES: raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})
-    return User(userId=user,role=normalized)
+    if normalized not in VALID_ROLES:
+        raise HTTPException(403,{"code":"FORBIDDEN","message":"X-RailOS-Role is missing or invalid"})
+    try:
+        parsed_department = Department(department) if department else None
+    except ValueError as exc:
+        raise HTTPException(403, {"code": "FORBIDDEN", "message": "X-RailOS-Department is invalid"}) from exc
+    return User(userId=user,role=normalized,department=parsed_department)
 
 def allow(*roles):
     norm_roles = {normalize_role(r) for r in roles}
@@ -521,6 +714,239 @@ async def validation_error(_,exc): return JSONResponse(error_body("VALIDATION_ER
 
 def listed(values): return {"items":[v.model_dump(by_alias=True,mode="json") if hasattr(v,"model_dump") else v for v in values.values()],"count":len(values),"synthetic":True,"scenario":"GZB_ALJN_DEMO"}
 
+
+def _ticket_view(request: BlockRequest) -> dict[str, Any]:
+    payload = request.model_dump(by_alias=True, mode="json")
+    task = state.tasks.get(request.linkedTaskId)
+    payload["linkedTask"] = task.model_dump(by_alias=True, mode="json") if task else None
+    return payload
+
+
+def _resolve_request_asset(body: BlockRequestCreate) -> Asset:
+    if body.asset_id:
+        asset = state.assets.get(body.asset_id)
+        if asset is None:
+            raise HTTPException(422, {
+                "code": "UNKNOWN_ASSET",
+                "message": "the selected asset does not exist",
+                "details": {"field": "assetId", "assetId": body.asset_id},
+            })
+        if asset.sectionId != body.section_id:
+            raise HTTPException(422, {
+                "code": "ASSET_SECTION_MISMATCH",
+                "message": "the selected asset is not in the requested section",
+                "details": {"field": "assetId", "sectionId": body.section_id},
+            })
+        if asset.track is not None and asset.track != body.track:
+            raise HTTPException(422, {
+                "code": "ASSET_TRACK_MISMATCH",
+                "message": "the selected asset is not on the requested track",
+                "details": {"field": "assetId", "track": body.track.value},
+            })
+        return asset
+
+    expected_type = TASK_ASSET_TYPES.get(body.task_type, "TRACK_SECTION")
+    candidates = [
+        asset for asset in state.assets.values()
+        if asset.sectionId == body.section_id
+        and asset.assetType == expected_type
+        and (asset.track is None or asset.track == body.track)
+    ]
+    if len(candidates) != 1:
+        raise HTTPException(422, {
+            "code": "ASSET_REQUIRED",
+            "message": "select the asset that identifies the work location",
+            "details": {
+                "field": "assetId",
+                "candidateAssetIds": [asset.assetId for asset in candidates],
+                "assetType": expected_type,
+            },
+        })
+    return candidates[0]
+
+
+def _validate_request_location(body: BlockRequestCreate, asset: Asset) -> None:
+    corridor = state.corridors.get(body.corridor_id)
+    if corridor is None:
+        raise HTTPException(422, {
+            "code": "UNKNOWN_CORRIDOR",
+            "message": "the selected corridor does not exist",
+            "details": {"field": "corridorId", "corridorId": body.corridor_id},
+        })
+    section = next((candidate for candidate in corridor.sections if candidate.sectionId == body.section_id), None)
+    if section is None:
+        raise HTTPException(422, {
+            "code": "SECTION_CORRIDOR_MISMATCH",
+            "message": "the selected section is not on the requested corridor",
+            "details": {"field": "sectionId", "sectionId": body.section_id, "corridorId": body.corridor_id},
+        })
+    if body.km_end * 1000 > section.endM or body.km_start * 1000 < section.startM:
+        raise HTTPException(422, {
+            "code": "KM_OUT_OF_SECTION",
+            "message": "the kilometre range must remain inside the selected section",
+            "details": {
+                "field": "kmStart/kmEnd",
+                "sectionId": section.sectionId,
+                "minKm": section.startM / 1000,
+                "maxKm": section.endM / 1000,
+            },
+        })
+    if asset.locationM < section.startM or asset.locationM > section.endM:
+        raise HTTPException(422, {
+            "code": "ASSET_OUTSIDE_SECTION",
+            "message": "the selected asset is outside the selected section",
+            "details": {"field": "assetId", "sectionId": section.sectionId},
+        })
+
+
+def _build_linked_task(body: BlockRequestCreate, request_id: str, asset: Asset) -> MaintenanceTask:
+    requirements = TASK_REQUIREMENTS.get(body.task_type, {})
+    due_minute = body.due_minute if body.due_minute is not None else body.requested_end
+    try:
+        return MaintenanceTask(
+            taskId=f"TKT-{request_id}",
+            department=body.department,
+            assetId=asset.assetId,
+            corridorId=body.corridor_id,
+            sectionId=body.section_id,
+            track=body.track,
+            kmStart=body.km_start,
+            kmEnd=body.km_end,
+            taskType=body.task_type,
+            severity=body.severity,
+            criticality=body.criticality if body.criticality is not None else body.severity,
+            dueMinute=due_minute,
+            estimatedDuration=body.estimated_duration,
+            blockRequired=body.block_required,
+            blockType=body.block_type,
+            status=TaskStatus.PENDING,
+            **requirements,
+        )
+    except ValueError as exc:
+        # The pydantic ValueError names an internal task id and machine enum;
+        # an SSE filling in a ticket needs the number and the rule, not that.
+        floor = _task_type_min_duration(body.task_type)
+        message = (
+            f"{body.task_type.value.replace('_', ' ').title()} needs at least {floor} minutes "
+            f"under HC-002; you entered {body.estimated_duration}."
+        ) if body.estimated_duration < floor else str(exc)
+        raise HTTPException(422, {
+            "code": "TASK_CONSTRAINT_INVALID",
+            "message": message,
+            "details": {"field": "estimatedDuration", "taskType": body.task_type.value, "minDurationMinutes": floor},
+        }) from exc
+
+
+def _task_type_min_duration(task_type: TaskType) -> int:
+    """Statutory block floor (HC-002) implied by the task type's machine."""
+    machine = TASK_REQUIREMENTS.get(task_type, {}).get("machineType", MachineType.NONE)
+    return MIN_MACHINE_BLOCK_MINUTES[machine]
+
+
+def _task_type_view(department: Department, task_type: TaskType) -> dict[str, Any]:
+    requirements = TASK_REQUIREMENTS.get(task_type, {})
+    return {
+        "taskType": task_type.value,
+        "department": department.value,
+        "minDurationMinutes": _task_type_min_duration(task_type),
+        "requiresPTW": bool(requirements.get("requiresPTW", False)),
+        "requiresT351": bool(requirements.get("requiresT351", False)),
+        "requiresCorrespondenceTest": bool(requirements.get("requiresCorrespondenceTest", False)),
+    }
+
+
+def _ticket_fingerprint(body: BlockRequestCreate) -> str:
+    return hashlib.sha256(body.model_dump_json(by_alias=True, exclude_none=True).encode("utf-8")).hexdigest()
+
+
+def _find_request(request_id: str) -> BlockRequest:
+    request = state.block_requests.get(request_id)
+    if request is None:
+        raise HTTPException(404, {"code": "NOT_FOUND", "message": "block request not found"})
+    return request
+
+@app.get("/api/v1/block-requests/task-types")
+def list_ticket_task_types(user: User = Depends(auth)):
+    """Per-department task types with their statutory duration floors.
+
+    The composer used to hard-code this list, so a new task type or a changed
+    HC-002 floor silently drifted out of sync and only surfaced as a 422.
+    """
+    items = [
+        _task_type_view(department, task_type)
+        for department, task_types in DEPARTMENT_TASK_TYPES.items()
+        for task_type in sorted(task_types, key=lambda t: t.value)
+    ]
+    return {"items": items, "count": len(items), "synthetic": True}
+
+
+@app.get("/api/v1/block-requests")
+def list_block_requests(department:Department|None=None,status:BlockRequestStatus|None=None,sectionId:str|None=None,user:User=Depends(auth)):
+    role = normalize_role(user.role)
+    if role not in BROAD_TICKET_ROLES:
+        scope = _department_scope(user)
+        if department is not None:
+            _authorize_ticket_department(user, department)
+        elif scope is None:
+            raise HTTPException(403, {"code": "DEPARTMENT_SCOPE_REQUIRED", "message": "the authenticated department supervisor has no department scope"})
+        department = scope
+    items = [
+        r for r in state.block_requests.values()
+        if (department is None or r.department == department)
+        and (status is None or r.status == status)
+        and (sectionId is None or r.sectionId == sectionId)
+    ]
+    return {"items": [_ticket_view(r) for r in items], "count": len(items), "synthetic": True, "scenario": "GZB_ALJN_DEMO"}
+
+@app.get("/api/v1/block-requests/{request_id}")
+def get_block_request(request_id:str,user:User=Depends(auth)):
+    request = _find_request(request_id)
+    _authorize_ticket_department(user, request.department)
+    return _ticket_view(request)
+
+@app.post("/api/v1/block-requests")
+def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header(None,alias="Idempotency-Key"),user:User=Depends(allow(*SUBMITTER_TICKET_ROLES))):
+    _authorize_ticket_department(user, body.department)
+    key = f"{user.user_id}:block-requests:{idempotency_key}" if idempotency_key else None
+    fingerprint = _ticket_fingerprint(body)
+    if key and key in state.idempotency:
+        saved = state.idempotency[key]
+        if saved["fingerprint"] != fingerprint:
+            raise HTTPException(409, {"code": "IDEMPOTENCY_CONFLICT", "message": "key reused with a different request"})
+        return saved["response"]
+    allowed_task_types = DEPARTMENT_TASK_TYPES.get(body.department, frozenset())
+    if body.task_type not in allowed_task_types:
+        raise HTTPException(422, {
+            "code": "TASK_TYPE_DEPARTMENT_MISMATCH",
+            "message": f"task type '{body.task_type.value}' is not valid for department {body.department.value}",
+            "details": {"field": "taskType", "department": body.department.value, "allowed": [t.value for t in allowed_task_types]},
+        })
+    asset = _resolve_request_asset(body)
+    _validate_request_location(body, asset)
+    request_id = body.request_id or f"REQ-{uuid.uuid4().hex[:10].upper()}"
+    task = _build_linked_task(body, request_id, asset)
+    now = datetime.now(timezone.utc).isoformat()
+    request = BlockRequest(
+        requestId=request_id, department=body.department, corridorId=body.corridor_id,
+        sectionId=body.section_id, assetId=asset.assetId, track=body.track,
+        kmStart=body.km_start, kmEnd=body.km_end, taskType=body.task_type,
+        severity=body.severity, criticality=body.criticality if body.criticality is not None else body.severity,
+        dueMinute=body.due_minute if body.due_minute is not None else body.requested_end,
+        estimatedDuration=body.estimated_duration, blockRequired=body.block_required,
+        blockType=body.block_type, requestedStart=body.requested_start, requestedEnd=body.requested_end,
+        status=BlockRequestStatus.REQUESTED, linkedTaskId=task.taskId,
+        requestedBy=user.user_id, requestedByRole=normalize_role(user.role),
+        createdAtUtc=now, updatedAtUtc=now, reason=body.reason,
+        provenance=_request_provenance(),
+    )
+    with state.transaction():
+        state.block_requests[request.requestId] = request
+        state.tasks[task.taskId] = task
+        state.emit("BLOCK_REQUEST_CREATED", request.requestId, request.model_dump(by_alias=True, mode="json"), user.user_id, reason=body.reason)
+        response = _ticket_view(request)
+        if key: state.idempotency[key] = {"fingerprint": fingerprint, "response": response}
+    return response
+
 @app.get("/health")
 @app.get("/api/v1/health")
 def health(): return {"status":"ok","synthetic":True,"storageBackend":os.getenv("RAILOS_STORAGE_BACKEND","memory")}
@@ -593,12 +1019,39 @@ def generate(request:PlanRequest,idempotency_key:str|None=Header(None,alias="Ide
         saved=state.idempotency[key];
         if saved["fingerprint"]!=fingerprint: raise HTTPException(409,{"code":"IDEMPOTENCY_CONFLICT","message":"key reused with a different request"})
         return saved["response"]
+    if request.task_ids is not None:
+        unknown_task_ids = sorted(set(request.task_ids) - set(state.tasks))
+        if unknown_task_ids:
+            raise HTTPException(400, {
+                "code": "UNKNOWN_TASK",
+                "message": "one or more selected task IDs do not exist",
+                "details": {"taskIds": unknown_task_ids},
+            })
+        request_task_ids = set(request.task_ids)
+        blocked_task_ids = sorted(
+            task_id for task_id in request_task_ids
+            if any(
+                block_request.linkedTaskId == task_id
+                and block_request.status in {BlockRequestStatus.REJECTED, BlockRequestStatus.CANCELLED}
+                for block_request in state.block_requests.values()
+            )
+        )
+        if blocked_task_ids:
+            raise HTTPException(409, {
+                "code": "TASK_NOT_PLANNABLE",
+                "message": "rejected or cancelled requests cannot be sent to Block Finder",
+                "details": {"taskIds": blocked_task_ids},
+            })
+
     for cid in request.corridor_ids:
         sections=[s for s in state.network.sections if s.corridorId==cid]
         if not any(s.planningEnabled for s in sections): raise HTTPException(403,{"code":"PLANNING_NOT_ENABLED","message":f"planning is not enabled for corridor {cid}","details":{"corridorId":cid}})
     port=optimizer_port()
     if port is None: raise HTTPException(503,{"code":"OPTIMIZER_UNAVAILABLE","message":"architecture-owned optimizer is unavailable"})
-    candidates=[port.generate(state.world(),profile) for profile in (ObjectiveProfile.SAFETY_FIRST,ObjectiveProfile.BALANCED,ObjectiveProfile.OPERATIONS_FIRST)]
+    planning_world = state.world(task_ids=request.task_ids)
+    if request.task_ids is not None and not planning_world.tasks:
+        raise HTTPException(400, {"code": "EMPTY_TASK_SELECTION", "message": "at least one existing task must be selected"})
+    candidates=[port.generate(planning_world,profile) for profile in (ObjectiveProfile.SAFETY_FIRST,ObjectiveProfile.BALANCED,ObjectiveProfile.OPERATIONS_FIRST)]
     if candidates and all("INFEASIBLE" in p.solverStatus.upper() for p in candidates):
         raise HTTPException(422,{"code":"SOLVER_INFEASIBLE","message":"optimizer found no feasible plan","details":{"warnings":[w for p in candidates for w in p.warnings]}})
     # audit() violations are genuine hard-constraint breaches and must block.
@@ -611,7 +1064,7 @@ def generate(request:PlanRequest,idempotency_key:str|None=Header(None,alias="Ide
     audit_violations_by_plan: dict[str, list[str]] = {}
     try:
         from optimizer.audit import audit
-        world=state.world()
+        world=planning_world
         for plan in candidates:
             try:
                 violations=audit(world,plan)

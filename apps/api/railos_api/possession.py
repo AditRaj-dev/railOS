@@ -751,6 +751,36 @@ def get_allowed_actions_for_role(
     return sorted(set(allowed))
 
 
+def get_blocked_actions_for_role(
+    possession: Possession,
+    role: str,
+    state: Any = None,
+) -> list[dict[str, str]]:
+    """Actions this role owns at this state but that a precondition refuses.
+
+    allowedActions deliberately hides these so nobody presses a button that
+    will 409. Without the reason the board just says "no action available",
+    which reads as a broken screen when the truth is a lead-in timer or a
+    day-of gate.
+    """
+    norm_role = normalize_role(role)
+    blocked: dict[str, str] = {}
+
+    for t in TRANSITIONS:
+        if t.from_state != possession.state:
+            continue
+        if norm_role != "ADMIN" and norm_role not in t.allowed_roles:
+            continue
+        preview_body: dict[str, Any] = {}
+        if t.action == "record-correspondence-test":
+            preview_body["durationMinutes"] = CORRESPONDENCE_TEST
+        ok, reason = check_precondition(possession, t.action, preview_body, norm_role, state)
+        if not ok:
+            blocked[t.action] = reason
+
+    return [{"action": a, "reason": blocked[a]} for a in sorted(blocked)]
+
+
 def build_possession_view(
     possession: Possession,
     role: str,
@@ -761,4 +791,5 @@ def build_possession_view(
     data["overrunMinutesLive"] = compute_overrun_minutes(possession)
     data["handbackChecklist"] = compute_handback_checklist(possession)
     data["allowedActions"] = get_allowed_actions_for_role(possession, role, state)
+    data["blockedActions"] = get_blocked_actions_for_role(possession, role, state)
     return data

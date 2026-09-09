@@ -33,7 +33,11 @@ export function useRailOSEventStream(enabled = true) {
       const events = Array.isArray(event.events) ? event.events : [event];
       if (!events.some((item) => {
         const type = item && typeof item === 'object' ? (item as { type?: string }).type || '' : '';
-        return type.startsWith('POSSESSION_') || type.startsWith('PLAN_SANCTION') || type === 'PLAN_APPROVED' || type === 'BLOCK_BURST_RECORDED';
+        return type.startsWith('POSSESSION_')
+          || type.startsWith('PLAN_SANCTION')
+          || type === 'PLAN_APPROVED'
+          || type === 'BLOCK_BURST_RECORDED'
+          || type === 'BLOCK_REQUEST_CREATED';
       })) return;
 
       queryClient.invalidateQueries({ queryKey: ['possessions'] });
@@ -41,6 +45,9 @@ export function useRailOSEventStream(enabled = true) {
       queryClient.invalidateQueries({ queryKey: ['blockBursts'] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'blockPlans'] });
       queryClient.invalidateQueries({ queryKey: ['planning', 'plans'] });
+      queryClient.invalidateQueries({ queryKey: ['planning', 'blockWindows'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance', 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['blockRequests'] });
       queryClient.invalidateQueries({ queryKey: ['analytics', 'summary'] });
     };
 

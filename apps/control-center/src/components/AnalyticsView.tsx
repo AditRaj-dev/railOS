@@ -3,7 +3,6 @@
 import React from 'react';
 import { AlertCircle, BarChart3, Clock3, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAnalyticsSummary } from '../lib/queries';
-import { useRailOSEventStream } from '../lib/useRailOSEventStream';
 import { StatusChip } from './StatusChip';
 import { POSSESSION_STATE_TOKENS } from './tokens';
 import { Table, TableBody, TableCell, TableHeader, TableHeaderCell } from './ui/Table';
@@ -22,7 +21,6 @@ function formatMinutes(value: number): string {
 }
 
 export const AnalyticsView: React.FC = () => {
-  useRailOSEventStream();
   const summary = useAnalyticsSummary();
   const bursts = summary.data?.blockBursts;
 

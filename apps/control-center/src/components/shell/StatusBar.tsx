@@ -14,7 +14,7 @@ export function StatusBar() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-          <span>{analytics?.tasks !== undefined ? `${analytics.tasks} open tasks` : 'Live API'}</span>
+          <span>{analytics?.tasks !== undefined ? `${analytics.tasks} open tasks` : 'Synthetic API'}</span>
         </div>
         <div className="flex items-center gap-2 text-slate-500 border-l border-slate-800 pl-4">
           <Clock className="w-3.5 h-3.5" />
@@ -25,7 +25,7 @@ export function StatusBar() {
       {/* Right: Environment Label */}
       <div className="flex items-center gap-2 px-2 py-1 rounded bg-slate-900/80 border border-slate-800 text-slate-400 hidden md:flex">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-        <span>LIVE API</span>
+        <span>SYNTHETIC API</span>
       </div>
     </footer>
   );

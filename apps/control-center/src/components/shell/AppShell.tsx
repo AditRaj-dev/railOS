@@ -21,11 +21,13 @@ import {
   X,
   LogIn,
   LogOut,
+  Ticket,
 } from 'lucide-react';
 import { TerritorySelector } from './TerritorySelector';
 import { ContextRail } from './ContextRail';
 import { StatusBar } from './StatusBar';
 import { LoginModal } from '../LoginModal';
+import { useRailOSEventStream } from '@/lib/useRailOSEventStream';
 
 const NAV_ITEMS: Array<{
   href: string;
@@ -35,6 +37,10 @@ const NAV_ITEMS: Array<{
 }> = [
   { href: '/command-center', label: 'Command Center', icon: LayoutDashboard, roles: ['ADMIN', 'CONTROL_OFFICER', 'PLANNER', 'MANAGEMENT'] },
   { href: '/network', label: 'Network Digital Twin', icon: Network, roles: ['ADMIN', 'CONTROL_OFFICER', 'PLANNER', 'MANAGEMENT', 'STATION_MASTER', 'TPC'] },
+  // Placed before /maintenance: the route guard below redirects an
+  // unauthorized role to visibleNavItems[0], and department roles
+  // (ENGG/SNT/TRD) should land on their ticket queue, not maintenance intel.
+  { href: '/tickets', label: 'Tickets', icon: Ticket, roles: ['ENGINEERING', 'SIGNAL_TELECOM', 'TRACTION', 'FIELD_SUPERVISOR', 'PLANNER', 'CONTROL_OFFICER', 'MANAGEMENT', 'ADMIN'] },
   { href: '/maintenance', label: 'Maintenance Intelligence', icon: Wrench, roles: ['ADMIN', 'PLANNER', 'ENGINEERING', 'SIGNAL_TELECOM', 'TRACTION', 'FIELD_SUPERVISOR'] },
   { href: '/planner', label: 'Block Opportunity Planner', icon: CalendarClock, roles: ['ADMIN', 'CONTROL_OFFICER', 'PLANNER'] },
   { href: '/timeline', label: 'Operational Gantt', icon: CalendarClock, roles: ['ADMIN', 'CONTROL_OFFICER', 'PLANNER', 'MANAGEMENT'] },
@@ -75,11 +81,33 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [loginModalOpen, setLoginModalOpen] = React.useState(false);
 
+  // Mounted once here rather than per-view: it already invalidates the
+  // relevant query caches on BLOCK_REQUEST_CREATED and friends, and every
+  // view under the shell benefits without opening a socket per view.
+  useRailOSEventStream();
+
   React.useEffect(() => {
     // Attempt to restore a real session from a persisted refresh token once,
     // on first mount. If none exists (or it's expired/revoked) this settles
     // to 'unauthenticated' and the synthetic role selector remains in charge.
     void restoreSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    // The acting role is a demo-session choice, not an identity: keep it across
+    // reloads so a refresh doesn't silently drop an SSE back to Section
+    // Controller. Restored after mount (not in the store's initial state) so
+    // server and client render the same first paint.
+    try {
+      const stored = window.sessionStorage.getItem('railos.actingRole');
+      if (stored) {
+        setUserRole(stored as UserRole);
+        setApiRole(stored as UserRole);
+      }
+    } catch {
+      // Private mode / blocked storage: the default role still works.
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -99,6 +127,11 @@ export function AppShell({ children }: AppShellProps) {
     setUserRole(role);
     // Keep the request layer in sync in the same event turn as the selector.
     setApiRole(role);
+    try {
+      window.sessionStorage.setItem('railos.actingRole', role);
+    } catch {
+      // Storage unavailable: the role still applies for this page's lifetime.
+    }
   };
 
   const handleReset = () => {
@@ -171,7 +204,7 @@ export function AppShell({ children }: AppShellProps) {
           <div className="flex items-center gap-2 md:gap-3">
           <div className="flex items-center gap-2 text-xs font-mono text-slate-300 px-2 py-1 rounded bg-slate-900 border border-slate-800" role="status">
             <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
-            <span>CRIS/NTES FEED LIVE</span>
+            <span>SYNTHETIC API CONNECTED</span>
           </div>
 
           {authSession ? (
