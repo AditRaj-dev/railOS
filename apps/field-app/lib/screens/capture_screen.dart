@@ -51,6 +51,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   bool _isCaptured = false;
   bool _isProcessing = false;
   bool _isSubmitting = false;
+  UploadProgress? _uploadProgress;
   String? _captureError;
   String? _exceptionReason;
   String? _capturedProofPath;
@@ -195,18 +196,27 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final evidence = widget.apiClient.queue.pendingQueue.last;
     setState(() {
       _isSubmitting = true;
+      _uploadProgress = null;
       _captureError = null;
     });
 
     String? error;
     try {
-      await widget.apiClient.syncEvidence(evidence);
+      await widget.apiClient.syncEvidence(
+        evidence,
+        onProgress: (progress) {
+          if (mounted) setState(() => _uploadProgress = progress);
+        },
+      );
     } catch (e) {
       error = 'Upload failed — held in offline queue: $e';
     }
 
     if (!mounted) return;
-    setState(() => _isSubmitting = false);
+    setState(() {
+      _isSubmitting = false;
+      _uploadProgress = null;
+    });
 
     if (error != null) {
       setState(() => _captureError = error);
@@ -219,6 +229,58 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
     if (!mounted) return;
     Navigator.pop(context, evidence);
+  }
+
+  /// Determinate bar while bytes are in flight: a field supervisor on a weak
+  /// link needs to see the upload moving, not a spinner that could mean
+  /// anything. Falls back to indeterminate before the first part reports.
+  Widget _buildUploadProgress() {
+    final progress = _uploadProgress;
+    final label = progress == null
+        ? 'Preparing upload…'
+        : progress.totalParts > 1
+        ? 'Uploading ${progress.percent}%  ·  part ${progress.partNumber} of ${progress.totalParts}'
+        : 'Uploading ${progress.percent}%';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: RailOSTokens.text_secondary,
+                ),
+              ),
+              if (progress != null)
+                Text(
+                  '${(progress.sentBytes / 1024).round()} / ${(progress.totalBytes / 1024).round()} KB',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: RailOSTokens.text_muted,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(RailOSTokens.borderRadiusSm),
+            child: LinearProgressIndicator(
+              value: progress?.fraction,
+              minHeight: 6,
+              backgroundColor: RailOSTokens.bg_elevated,
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                RailOSTokens.accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _promptExceptionReason() async {
@@ -588,6 +650,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                         ],
                       ),
                     ),
+                  if (_isSubmitting) _buildUploadProgress(),
                   _isCaptured
                       ? Row(
                           children: [

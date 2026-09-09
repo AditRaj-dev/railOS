@@ -40,6 +40,31 @@ class OfflineEntitlementExpiredException implements Exception {
       'Your 24-hour offline entitlement has expired. Reconnect and authenticate before recording field actions.';
 }
 
+/// How far an evidence upload has got. [sentBytes] counts bytes the object
+/// store has acknowledged, so a failed part does not inflate the bar.
+class UploadProgress {
+  final String evidenceId;
+  final String storageKind;
+  final int sentBytes;
+  final int totalBytes;
+  final int partNumber;
+  final int totalParts;
+
+  const UploadProgress({
+    required this.evidenceId,
+    required this.storageKind,
+    required this.sentBytes,
+    required this.totalBytes,
+    required this.partNumber,
+    required this.totalParts,
+  });
+
+  double get fraction => totalBytes <= 0 ? 0 : (sentBytes / totalBytes).clamp(0.0, 1.0);
+  int get percent => (fraction * 100).round();
+}
+
+typedef UploadProgressCallback = void Function(UploadProgress progress);
+
 class RailOSApiClient {
   final String baseUrl;
   final OfflineEvidenceQueue queue;
@@ -64,6 +89,9 @@ class RailOSApiClient {
   }
 
   String? get _token => queue.currentSession?.accessToken;
+
+  /// Slice size fed to the socket while streaming a part.
+  static const int _streamChunkBytes = 256 * 1024;
 
   Map<String, String> _headers({
     String? idempotencyKey,
@@ -475,13 +503,31 @@ class RailOSApiClient {
   /// its ETag. This never carries our Authorization header: the signature in
   /// the URL is the credential, and Neon/S3 rejects a request that also
   /// carries a bearer token.
-  Future<String> _uploadPart(String url, List<int> bytes) async {
+  Future<String> _uploadPart(
+    String url,
+    RandomAccessFile handle,
+    int offset,
+    int length, {
+    void Function(int chunkBytes)? onChunk,
+  }) async {
     final client = HttpClient();
     try {
       final request = await client.putUrl(Uri.parse(url));
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
-      request.headers.contentLength = bytes.length;
-      request.add(bytes);
+      request.headers.contentLength = length;
+      // Feed the socket in slices so a 90-second video never has to sit in
+      // RAM in one piece on a low-end handset.
+      await handle.setPosition(offset);
+      var remaining = length;
+      while (remaining > 0) {
+        final take = remaining < _streamChunkBytes ? remaining : _streamChunkBytes;
+        final chunk = await handle.read(take);
+        if (chunk.isEmpty) break;
+        request.add(chunk);
+        await request.flush();
+        remaining -= chunk.length;
+        onChunk?.call(chunk.length);
+      }
       final response = await request.close();
       final body = await response.transform(utf8.decoder).join();
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -512,6 +558,9 @@ class RailOSApiClient {
     required String filePath,
     required String contentType,
     required String? knownSha256,
+    UploadProgressCallback? onProgress,
+    int baseSentBytes = 0,
+    int overallTotalBytes = 0,
   }) async {
     final file = File(filePath);
     if (!await file.exists()) {
@@ -521,7 +570,7 @@ class RailOSApiClient {
         message: 'The captured file is no longer on this device: $filePath',
       );
     }
-    final bytes = await file.readAsBytes();
+    final totalBytes = await file.length();
 
     final session = _asMap(
       await _authedRequest(
@@ -529,28 +578,70 @@ class RailOSApiClient {
         '/api/v1/evidence/$evidenceId/uploads/initiate',
         body: {
           'storageKind': storageKind,
-          'totalBytes': bytes.length,
+          'totalBytes': totalBytes,
           'contentType': contentType,
         },
       ),
     );
     final sessionId = session['sessionId'] as String? ?? '';
-    final partSize = (session['partSizeBytes'] as num?)?.toInt() ?? bytes.length;
+    final partSize = (session['partSizeBytes'] as num?)?.toInt() ?? totalBytes;
     final totalParts = (session['totalParts'] as num?)?.toInt() ?? 1;
+    final overall = overallTotalBytes > 0 ? overallTotalBytes : totalBytes;
 
+    final handle = await file.open();
     final parts = <Map<String, dynamic>>[];
-    for (var partNumber = 1; partNumber <= totalParts; partNumber++) {
-      final start = (partNumber - 1) * partSize;
-      final end = start + partSize > bytes.length ? bytes.length : start + partSize;
-      final presign = _asMap(
-        await _authedRequest(
-          'POST',
-          '/api/v1/evidence/$evidenceId/uploads/parts/$partNumber/presign?sessionId=$sessionId',
-        ),
-      );
-      final url = presign['uploadUrl'] as String? ?? presign['url'] as String? ?? '';
-      final etag = await _uploadPart(url, bytes.sublist(start, end));
-      parts.add({'partNumber': partNumber, 'etag': etag});
+    var sent = baseSentBytes;
+    try {
+      for (var partNumber = 1; partNumber <= totalParts; partNumber++) {
+        final offset = (partNumber - 1) * partSize;
+        final remaining = totalBytes - offset;
+        final length = remaining < partSize ? remaining : partSize;
+        if (length <= 0) break;
+
+        final partStart = sent;
+        // A presigned URL is short-lived, so it is fetched per part rather
+        // than up front: a slow link would otherwise expire the later ones.
+        Future<String> sendPart() async {
+          final presign = _asMap(
+            await _authedRequest(
+              'POST',
+              '/api/v1/evidence/$evidenceId/uploads/parts/$partNumber/presign?sessionId=$sessionId',
+            ),
+          );
+          final url = presign['uploadUrl'] as String? ?? presign['url'] as String? ?? '';
+          return _uploadPart(
+            url,
+            handle,
+            offset,
+            length,
+            onChunk: (chunkBytes) {
+              sent += chunkBytes;
+              onProgress?.call(UploadProgress(
+                evidenceId: evidenceId,
+                storageKind: storageKind,
+                sentBytes: sent,
+                totalBytes: overall,
+                partNumber: partNumber,
+                totalParts: totalParts,
+              ));
+            },
+          );
+        }
+
+        String etag;
+        try {
+          etag = await sendPart();
+        } on RailOSNetworkException {
+          // One retry per part: a dropped part on a field link should not
+          // cost the whole capture. Rewind the counter first so the bar does
+          // not double-count the bytes we are about to send again.
+          sent = partStart;
+          etag = await sendPart();
+        }
+        parts.add({'partNumber': partNumber, 'etag': etag});
+      }
+    } finally {
+      await handle.close();
     }
 
     await _authedRequest(
@@ -561,12 +652,15 @@ class RailOSApiClient {
         'storageKind': storageKind,
         'parts': parts,
         'sha256': knownSha256 ?? '',
-        'sizeBytes': bytes.length,
+        'sizeBytes': totalBytes,
       },
     );
   }
 
-  Future<void> syncEvidence(CapturedEvidence evidence) async {
+  Future<void> syncEvidence(
+    CapturedEvidence evidence, {
+    UploadProgressCallback? onProgress,
+  }) async {
     await _request(
       'POST',
       '/api/v1/evidence',
@@ -586,21 +680,36 @@ class RailOSApiClient {
     final contentType = evidence.kind == EvidenceKind.video
         ? 'video/mp4'
         : 'image/jpeg';
+    final proofIsSeparate = evidence.proofFilePath.isNotEmpty &&
+        evidence.proofFilePath != evidence.originalFilePath;
+
+    // The bar spans both files, so it does not jump back to zero when the
+    // proof copy starts.
+    var overall = await File(evidence.originalFilePath).length();
+    if (proofIsSeparate) {
+      final proof = File(evidence.proofFilePath);
+      if (await proof.exists()) overall += await proof.length();
+    }
+
     await _uploadEvidenceFile(
       evidenceId: evidence.evidenceId,
       storageKind: 'ORIGINAL',
       filePath: evidence.originalFilePath,
       contentType: contentType,
       knownSha256: evidence.originalSha256,
+      onProgress: onProgress,
+      overallTotalBytes: overall,
     );
-    if (evidence.proofFilePath.isNotEmpty &&
-        evidence.proofFilePath != evidence.originalFilePath) {
+    if (proofIsSeparate) {
       await _uploadEvidenceFile(
         evidenceId: evidence.evidenceId,
         storageKind: 'PROOF',
         filePath: evidence.proofFilePath,
         contentType: contentType,
         knownSha256: evidence.proofSha256,
+        onProgress: onProgress,
+        baseSentBytes: await File(evidence.originalFilePath).length(),
+        overallTotalBytes: overall,
       );
     }
 

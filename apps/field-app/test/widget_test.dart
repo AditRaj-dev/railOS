@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:field_app/main.dart';
 import 'package:field_app/models/evidence_models.dart';
 import 'package:field_app/screens/capture_screen.dart';
+import 'package:field_app/services/api_client.dart';
 import 'package:field_app/storage/local_store.dart';
 import 'package:field_app/storage/offline_evidence_queue.dart';
 import 'package:field_app/theme/railos_tokens.dart';
@@ -252,5 +253,42 @@ void main() {
       longitude2: 77.2090,
     );
     expect(distance, greaterThan(100));
+  });
+
+  group('UploadProgress', () {
+    test('reports the fraction of bytes the store has acknowledged', () {
+      const halfway = UploadProgress(
+        evidenceId: 'ev-1',
+        storageKind: 'ORIGINAL',
+        sentBytes: 512 * 1024,
+        totalBytes: 1024 * 1024,
+        partNumber: 1,
+        totalParts: 2,
+      );
+      expect(halfway.fraction, closeTo(0.5, 0.0001));
+      expect(halfway.percent, 50);
+    });
+
+    test('never reports past 100% or divides by a zero total', () {
+      const overshoot = UploadProgress(
+        evidenceId: 'ev-2',
+        storageKind: 'PROOF',
+        sentBytes: 900,
+        totalBytes: 800,
+        partNumber: 2,
+        totalParts: 2,
+      );
+      expect(overshoot.percent, 100);
+
+      const empty = UploadProgress(
+        evidenceId: 'ev-3',
+        storageKind: 'ORIGINAL',
+        sentBytes: 0,
+        totalBytes: 0,
+        partNumber: 1,
+        totalParts: 1,
+      );
+      expect(empty.fraction, 0);
+    });
   });
 }
