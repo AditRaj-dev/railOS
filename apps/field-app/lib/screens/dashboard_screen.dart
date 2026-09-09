@@ -28,6 +28,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _possessions = [];
   bool _isLoading = true;
+  String? _loadError;
   final OfflineEvidenceQueue _queue = OfflineEvidenceQueue();
 
   @override
@@ -48,15 +49,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadTasks() async {
-    setState(() => _isLoading = true);
-    final tasks = await widget.apiClient.fetchMyAssignments();
-    final possessions = await widget.apiClient.fetchMyPossessions();
-    if (mounted) {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    // An expired token or a server error used to escape here uncaught, so the
+    // loading flag never cleared and the screen span forever with nothing to
+    // act on. Whatever happens, stop loading and say what went wrong.
+    try {
+      final tasks = await widget.apiClient.fetchMyAssignments();
+      final possessions = await widget.apiClient.fetchMyPossessions();
+      if (!mounted) return;
       setState(() {
         _tasks = tasks;
         _possessions = possessions;
-        _isLoading = false;
       });
+    } on RailOSApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.statusCode == 401
+            ? 'Your session has expired. Sign out and sign in again.'
+            : '${error.code}: ${error.message}';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = 'Could not reach RailOS: $error');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -383,6 +402,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: CircularProgressIndicator(
                           color: RailOSTokens.accent,
                           strokeWidth: 2,
+                        ),
+                      ),
+                    )
+                  : _loadError != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.cloud_off_outlined,
+                              size: 40,
+                              color: RailOSTokens.text_muted,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _loadError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: RailOSTokens.text_muted,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _loadTasks,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                          ],
                         ),
                       ),
                     )

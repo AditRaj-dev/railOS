@@ -181,14 +181,56 @@ class RailOSApiClient {
     return session;
   }
 
-  Future<List<Map<String, dynamic>>> fetchMyAssignments() async {
+  /// Exchange the stored refresh token for a new access token. Returns false
+  /// when there is nothing to refresh with, or the server refuses -- the
+  /// caller then has a genuine sign-in problem to report.
+  Future<bool> _refreshSession() async {
+    final session = queue.currentSession;
+    if (session == null || session.refreshToken.isEmpty) return false;
     try {
       final data = _asMap(
         await _request(
-          'GET',
-          '/api/v1/work/assignments/mine',
-          headers: _headers(),
+          'POST',
+          '/api/v1/auth/refresh',
+          body: {'refreshToken': session.refreshToken},
+          headers: {'Content-Type': 'application/json'},
         ),
+      );
+      final access = data['accessToken'] as String? ?? '';
+      if (access.isEmpty) return false;
+      queue.setSession(
+        session.copyWith(
+          accessToken: access,
+          refreshToken: data['refreshToken'] as String? ?? session.refreshToken,
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// A day-old access token used to leave the dashboard spinning forever: the
+  /// 401 escaped every catch on the way up and the loading flag was never
+  /// cleared. Refresh once, retry once, then let the error travel.
+  Future<dynamic> _authedRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    try {
+      return await _request(method, path, body: body, headers: _headers());
+    } on RailOSApiException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      if (!await _refreshSession()) rethrow;
+      return await _request(method, path, body: body, headers: _headers());
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMyAssignments() async {
+    try {
+      final data = _asMap(
+        await _authedRequest('GET', '/api/v1/work/assignments/mine'),
       );
       final tasks = _asMapList(data['tasks'] ?? data['items']);
       if (tasks.isNotEmpty) queue.setCachedTasks(tasks);
@@ -245,7 +287,7 @@ class RailOSApiClient {
   Future<List<Map<String, dynamic>>> fetchMyPossessions() async {
     try {
       final data = _asMap(
-        await _request('GET', '/api/v1/possessions/mine', headers: _headers()),
+        await _authedRequest('GET', '/api/v1/possessions/mine'),
       );
       final possessions = _asMapList(data['items'] ?? data['possessions']);
       if (possessions.isNotEmpty || data.containsKey('items')) {
