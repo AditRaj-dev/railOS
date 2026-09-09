@@ -221,7 +221,7 @@ export function ContextRail() {
                 <div className="pt-2 border-t border-[var(--border-subtle)]">
                   <span className="text-[10px] uppercase text-[var(--text-muted)]">Section / Track</span>
                   <div className="text-[var(--text-secondary)]">
-                    {String(selectedTask.sectionId || 'GZB-ALJN')} · {String(selectedTask.track || 'DOWN')}
+                    {String(selectedTask.sectionId || '—')} · {String(selectedTask.track || '—')}
                   </div>
                 </div>
 

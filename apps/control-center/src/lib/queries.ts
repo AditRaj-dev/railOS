@@ -676,17 +676,3 @@ export function useGenerateReplanning(): UseMutationResult<
     },
   });
 }
-
-/**
- * Reset backend demo state to deterministic baseline.
- */
-export function useResetDemo(): UseMutationResult<unknown, api.RailOSApiError, void> {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: () => api.resetDemo(),
-    onSuccess: () => {
-      queryClient.invalidateQueries();
-    },
-  });
-}

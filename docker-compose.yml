@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: railos-postgres
+    environment:
+      - POSTGRES_USER=railos
+      - POSTGRES_PASSWORD=railos
+      - POSTGRES_DB=railos
+    ports:
+      - "5432:5432"
+    volumes:
+      - railos-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U railos -d railos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -9,7 +27,14 @@ services:
     environment:
       - PORT=8000
       - PYTHONUNBUFFERED=1
-      - RAILOS_STORAGE_BACKEND=memory
+      - RAILOS_STORAGE_BACKEND=postgres
+      - DATABASE_URL=postgresql://railos:railos@postgres:5432/railos
+      # No default in code: the API refuses to start without this.
+      - RAILOS_JWT_SECRET=${RAILOS_JWT_SECRET:?set RAILOS_JWT_SECRET}
+      - RAILOS_EVIDENCE_SIGNING_KEY=${RAILOS_EVIDENCE_SIGNING_KEY:?set RAILOS_EVIDENCE_SIGNING_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   control-center:
@@ -29,3 +54,6 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+
+volumes:
+  railos-pgdata:

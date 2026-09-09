@@ -2,16 +2,20 @@
 
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getApiRole, getAuthSession } from './api';
+import { getApiRole, getAuthSession, SYNTHETIC_AUTH_ENABLED } from './api';
 import { useRailOSStore } from '@/store/railosStore';
 
 function eventSocketUrl(role: string): string {
   const configured = process.env.NEXT_PUBLIC_RAILOS_API_URL || 'http://localhost:8000';
   const base = configured.replace(/^http/i, 'ws').replace(/\/$/, '');
   const session = getAuthSession();
+  // Same rule as the REST client: no token and no synthetic opt-in means the
+  // socket connects unauthenticated and the API closes it.
   const query = session
     ? new URLSearchParams({ access_token: session.accessToken })
-    : new URLSearchParams({ user: 'demo-user', role });
+    : SYNTHETIC_AUTH_ENABLED
+      ? new URLSearchParams({ user: 'demo-user', role })
+      : new URLSearchParams();
   return `${base}/api/v1/events/ws?${query.toString()}`;
 }
 

@@ -315,9 +315,9 @@ function getConfig(): ApiConfig {
 
 // The shell owns the role selector; API calls read this value at request time so
 // every server-state request carries the same authority context. This drives the
-// synthetic X-RailOS-Role header used by endpoints that have no Bearer-token
-// support at all (the possession/plan/task API), and also mirrors a real login's
-// verified role so both auth paths agree on "who is acting" everywhere in the UI.
+// synthetic X-RailOS-Role header, which is only sent when synthetic auth is
+// explicitly enabled, and also mirrors a real login's verified role so both auth
+// paths agree on "who is acting" everywhere in the UI.
 let activeRole: RailOSRole = 'CONTROL_OFFICER';
 
 export function setApiRole(role: RailOSRole | string | null | undefined) {
@@ -332,10 +332,10 @@ export function getApiRole(): RailOSRole {
 // ============================================================================
 // Real authentication (Argon2 + JWT, evidence_routes.py) — coexists with the
 // synthetic header path above. When a session is set, its Bearer token is sent
-// on every request; endpoints that understand it (evidence, admin) verify the
-// caller for real. Endpoints that don't (possession/plan/task, main.py) simply
-// ignore the header they don't declare and keep using X-RailOS-Role, which
-// authStore keeps in sync with the logged-in role via setApiRole above.
+// on every request and every endpoint verifies the caller for real - the
+// planning/possession/ticket API in main.py accepts the same token. The
+// synthetic headers are a local-development fallback, off unless
+// NEXT_PUBLIC_ENABLE_SYNTHETIC_AUTH is set.
 // ============================================================================
 
 export interface AuthSession {
@@ -346,6 +346,9 @@ export interface AuthSession {
   role: string;
   employeeId: string;
   name: string;
+  /** The account's own department (ENGG/SNT/TRD), when it has one. Supervisors
+   * belong to a department that their role alone cannot identify. */
+  department?: DepartmentCode;
 }
 
 export interface AuthLoginResult {
@@ -357,6 +360,7 @@ export interface AuthLoginResult {
   role: string;
   employeeId: string;
   name: string;
+  department?: DepartmentCode;
 }
 
 let authSession: AuthSession | null = null;
@@ -427,6 +431,7 @@ function toAuthSession(result: AuthLoginResult): AuthSession {
     role: result.role,
     employeeId: result.employeeId,
     name: result.name,
+    department: result.department,
   };
 }
 
@@ -450,6 +455,9 @@ async function tryRefreshSession(): Promise<boolean> {
   }
 }
 
+export const SYNTHETIC_AUTH_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_SYNTHETIC_AUTH === 'true';
+
 /**
  * Preserve real identity until the server accepts it or refreshes it. An expired
  * access token must produce a 401, never silently change the actor to demo-user.
@@ -458,7 +466,14 @@ function getAuthHeaders(): Record<string, string> {
   if (authSession) {
     return { Authorization: `Bearer ${authSession.accessToken}` };
   }
-  return { 'X-RailOS-User': 'demo-user', 'X-RailOS-Role': activeRole };
+  // The header path asserts an identity and a role with no credentials at all.
+  // The API only honours it when ENABLE_SYNTHETIC_AUTH is on; the client must
+  // opt in just as explicitly, so a deployed build sends nothing and an
+  // unauthenticated request gets its 401 instead of silently acting as an admin.
+  if (SYNTHETIC_AUTH_ENABLED) {
+    return { 'X-RailOS-User': 'demo-user', 'X-RailOS-Role': activeRole };
+  }
+  return {};
 }
 
 const AUTH_PATH_PREFIX = '/api/v1/auth/';
@@ -923,7 +938,7 @@ export async function generateOptimization(payload: {
   const data = await fetchApi<unknown>('/api/v1/optimization/generate', {
     method: 'POST',
     body: JSON.stringify({
-      corridorIds: payload.corridorIds || ['GZB-ALJN'],
+      corridorIds: payload.corridorIds,
       objective: payload.objectiveProfile || 'BALANCED',
       planningHorizon: payload.planningHorizon || 'WEEKLY',
       taskIds: payload.taskIds,
@@ -1004,10 +1019,10 @@ export async function createEmergency(payload: {
     body: JSON.stringify({
       title: payload.title,
       corridorId: payload.corridorId,
-      sectionId: payload.sectionId || 'SEC_KRJ_SMQ',
-      assetId: payload.assetId || 'TRACK_SEC_KRJ_SMQ_DOWN',
-      severity: payload.severity || 'IMR',
-      durationMinutes: payload.durationMinutes || 60,
+      sectionId: payload.sectionId,
+      assetId: payload.assetId,
+      severity: payload.severity,
+      durationMinutes: payload.durationMinutes,
     }),
   });
   return data;
@@ -1027,14 +1042,6 @@ export async function generateReplanning(payload: {
       nowMinute: payload.nowMinute ?? 0,
       reason: payload.reason,
     }),
-  });
-  return data;
-}
-
-export async function resetDemo(): Promise<unknown> {
-  const data = await fetchApi<unknown>('/api/v1/demo/reset', {
-    method: 'POST',
-    headers: { 'X-RailOS-Role': 'ADMIN' },
   });
   return data;
 }
@@ -1080,13 +1087,11 @@ export async function getEvidenceList(params?: {
   if (params?.taskId) query.set('task_id', params.taskId);
   const qStr = query.toString();
   return fetchApi<{ items: EvidenceRecord[]; count: number }>(`/api/v1/evidence${qStr ? `?${qStr}` : ''}`, {
-    headers: { 'X-RailOS-Role': 'CONTROL_OFFICER' },
   });
 }
 
 export async function getEvidenceDetails(evidenceId: string): Promise<EvidenceRecord> {
   return fetchApi<EvidenceRecord>(`/api/v1/evidence/${evidenceId}`, {
-    headers: { 'X-RailOS-Role': 'CONTROL_OFFICER' },
   });
 }
 
@@ -1097,14 +1102,12 @@ export async function reviewEvidence(
 ): Promise<EvidenceRecord> {
   return fetchApi<EvidenceRecord>(`/api/v1/evidence/${evidenceId}:review`, {
     method: 'POST',
-    headers: { 'X-RailOS-Role': 'CONTROL_OFFICER' },
     body: JSON.stringify({ decision, reviewNotes }),
   });
 }
 
 export async function getSupervisorsList(): Promise<{ items: SupervisorRecord[]; count: number }> {
   return fetchApi<{ items: SupervisorRecord[]; count: number }>('/api/v1/admin/supervisors', {
-    headers: { 'X-RailOS-Role': 'ADMIN' },
   });
 }
 
@@ -1117,7 +1120,6 @@ export async function createSupervisorAccount(payload: {
 }): Promise<SupervisorRecord> {
   return fetchApi<SupervisorRecord>('/api/v1/admin/supervisors', {
     method: 'POST',
-    headers: { 'X-RailOS-Role': 'ADMIN' },
     body: JSON.stringify(payload),
   });
 }
@@ -1128,33 +1130,7 @@ export async function updateSupervisorAreas(
 ): Promise<SupervisorRecord> {
   return fetchApi<SupervisorRecord>(`/api/v1/admin/supervisors/${supervisorId}/areas`, {
     method: 'PUT',
-    headers: { 'X-RailOS-Role': 'ADMIN' },
     body: JSON.stringify({ sectionCodes }),
-  });
-}
-
-export async function simulateEvidenceUpload(payload: {
-  taskId: string;
-  stepId?: string;
-  kind?: 'PHOTO' | 'VIDEO';
-  scenario?: 'COMPLIANT' | 'FLAGGED_GPS' | 'FLAGGED_ACCURACY';
-  exceptionReason?: string;
-  mediaBase64?: string;
-}): Promise<{ evidence: EvidenceRecord; manifest: Record<string, unknown> }> {
-  return fetchApi<{ evidence: EvidenceRecord; manifest: Record<string, unknown> }>(
-    '/api/v1/evidence/demo-upload',
-    {
-      method: 'POST',
-      headers: { 'X-RailOS-Role': 'FIELD_SUPERVISOR' },
-      body: JSON.stringify(payload),
-    }
-  );
-}
-
-export async function seedDemoData(): Promise<{ ok: boolean; counts: Record<string, number> }> {
-  return fetchApi<{ ok: boolean; counts: Record<string, number> }>('/api/v1/demo/seed', {
-    method: 'POST',
-    headers: { 'X-RailOS-Role': 'ADMIN' },
   });
 }
 

@@ -23,11 +23,30 @@ from railos_model import UserRole
 from .roles import normalize_role
 
 # Config
-JWT_SECRET = os.getenv("RAILOS_JWT_SECRET", "railos-insecure-dev-jwt-secret-key-32-chars-min")
+# No fallback secret. A hardcoded default meant any deployment that forgot to
+# set this signed its tokens with a value published in the source tree, so
+# anyone could mint an admin token for it.
+JWT_SECRET = os.getenv("RAILOS_JWT_SECRET", "")
+if not JWT_SECRET:
+    if os.getenv("RAILOS_ALLOW_EPHEMERAL_JWT_SECRET") == "true":
+        # Tests and local runs get a random per-process secret: tokens work
+        # within the process and are worthless outside it.
+        JWT_SECRET = secrets.token_urlsafe(48)
+    else:
+        raise RuntimeError(
+            "RAILOS_JWT_SECRET is required. Generate one with "
+            "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"`."
+        )
+if len(JWT_SECRET) < 32:
+    raise RuntimeError("RAILOS_JWT_SECRET must be at least 32 characters")
+
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 30
-ENABLE_SYNTHETIC_AUTH = os.getenv("ENABLE_SYNTHETIC_AUTH", "true").lower() == "true"
+
+# Off by default. When on, any caller can assert an identity and a role with
+# plain headers - including ADMIN - with no credentials at all.
+ENABLE_SYNTHETIC_AUTH = os.getenv("ENABLE_SYNTHETIC_AUTH", "false").lower() == "true"
 
 _ph = PasswordHasher()
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -51,6 +70,10 @@ class TokenResponse(AuthDTO):
     role: str
     employee_id: str
     name: str
+    # The supervisor's own department (ENGG/SNT/TRD). It is already a JWT claim;
+    # returning it lets the client scope its department queues without
+    # re-deriving the rule from the role, which is impossible for supervisors.
+    department: str | None = None
 
 
 class LoginRequest(AuthDTO):
@@ -72,7 +95,9 @@ class CreateSupervisorRequest(AuthDTO):
     assigned_section_codes: list[str] = Field(default_factory=list)
     # railos_model.Department value (ENGG/SNT/TRD) — scopes /work/assignments/mine
     # to this supervisor's own department instead of every department's tasks.
-    department: str | None = None
+    # Required for SUPERVISOR/FIELD_SUPERVISOR roles: without a department,
+    # _department_scope() returns None and ticket creation returns 403.
+    department: str
 
 
 class UpdateSupervisorAreasRequest(AuthDTO):

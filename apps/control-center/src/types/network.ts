@@ -61,6 +61,10 @@ export interface RailwaySection {
   geometry: GeoJSONGeometry;
   metrics: NetworkMetrics;
   planningEnabled: boolean;
+  /** Planable chainage bounds, joined from the corridor's block section by the
+   * API. Absent for overview-only sections that no corridor plans. */
+  minKm?: number;
+  maxKm?: number;
   provenance: DataProvenance;
 }
 

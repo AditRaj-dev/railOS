@@ -268,10 +268,28 @@ class TicketToEvidenceE2ETests(unittest.TestCase):
         self.assertEqual(me_res.status_code, 200, "[stage6] /me must accept the freshly issued JWT")
         self.assertEqual(me_res.json()["employeeId"], FIELD_SUPERVISOR_EMPLOYEE_ID)
 
-        # Pull the ENGG-department "mine" assignments so the ticket-derived
-        # task gets its default work steps auto-provisioned (evidence_routes
-        # lazily creates them the first time a supervisor's own tasks are
-        # listed), giving us a real step_id to attach evidence to.
+        # Control defines where this task's evidence must be captured. Nothing
+        # is auto-provisioned any more: the endpoint used to invent two steps
+        # per task at a fixed Delhi coordinate and persist them as surveyed.
+        admin_setup = self.client.post(
+            "/api/v1/auth/login",
+            json={"employeeId": "EMP001", "password": "Admin@123"},
+        )
+        self.assertEqual(admin_setup.status_code, 200, "[stage6] admin login failed for work-step setup")
+        define_res = self.client.put(
+            f"/api/v1/tasks/{task_id}/steps",
+            headers={"Authorization": f"Bearer {admin_setup.json()['accessToken']}"},
+            json={"steps": [{
+                "title": "Pre-work site inspection",
+                "requiresPhoto": True,
+                "targetLatitude": 28.6139,
+                "targetLongitude": 77.2090,
+                "targetRadiusMeters": 100.0,
+            }]},
+        )
+        self.assertEqual(define_res.status_code, 200, f"[stage6] defining work steps failed: {define_res.text}")
+
+        # The supervisor then sees exactly those steps on their own work list.
         mine_res = self.client.get("/api/v1/work/assignments/mine", headers=auth_header)
         self.assertEqual(mine_res.status_code, 200, f"[stage6] work/assignments/mine failed: {mine_res.text}")
         mine_tasks = {t["taskId"]: t for t in mine_res.json()["tasks"]}

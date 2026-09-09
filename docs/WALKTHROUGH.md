@@ -79,14 +79,19 @@ cd apps/field-app
 flutter pub get && flutter run --dart-define=RAILOS_API_BASE=http://10.0.2.2:8000
 ```
 
-Seed accounts (created automatically on first run):
+There are no seeded accounts. A fresh database has no users at all — the
+four accounts that used to ship in the source (an admin and three
+supervisors, with their passwords) were removed. Create the first
+administrator, then create supervisors through it:
 
-| Employee ID | Password | Role | Department | Use for |
-|---|---|---|---|---|
-| `EMP001` | `Admin@123` | ADMIN | — | supervisor administration, everything |
-| `EMP901` | `Field@123` | SUPERVISOR | ENGG (Permanent Way) | field app login, track/civil evidence |
-| `EMP902` | `Field@123` | SUPERVISOR | SNT (Signal & Telecom) | field app login, signalling evidence |
-| `EMP903` | `Field@123` | SUPERVISOR | TRD (Traction) | field app login, OHE/traction evidence |
+```bash
+python scripts/migrate.py
+RAILOS_ADMIN_PASSWORD='<choose one>' python scripts/create_admin.py --employee-id EMP001 --name "Chief Controller"
+# then POST /api/v1/admin/supervisors as that admin, one per department
+```
+
+Every supervisor needs a department (`ENGG`, `SNT` or `TRD`): without one
+they can neither file a ticket nor be assigned work.
 
 `/api/v1/work/assignments/mine` scopes each supervisor's assigned tasks to their own department — an ENGG supervisor never sees SNT or TRD maintenance tasks, matching how field staff are actually organised.
 

@@ -7,7 +7,11 @@ Ed25519 canonical manifest signing.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import math
+import os
+import pathlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -46,12 +50,45 @@ def calculate_haversine_distance_meters(
     return EARTH_RADIUS_METERS * c
 
 
+def _configured_signer() -> ManifestSigner:
+    """Load the evidence signing key from configuration.
+
+    A keyless ManifestSigner() generates a fresh keypair, so every restart
+    silently invalidated every signature written before it - evidence signed
+    yesterday could no longer be verified today. The key must outlive the
+    process.
+
+    RAILOS_EVIDENCE_SIGNING_KEY is base64 (raw 32-byte seed or PKCS8 PEM);
+    RAILOS_EVIDENCE_SIGNING_KEY_FILE is a path to the same bytes.
+    """
+    raw = os.getenv("RAILOS_EVIDENCE_SIGNING_KEY")
+    key_file = os.getenv("RAILOS_EVIDENCE_SIGNING_KEY_FILE")
+    if raw:
+        try:
+            return ManifestSigner.from_private_bytes(base64.b64decode(raw, validate=True))
+        except (binascii.Error, ValueError) as exc:
+            raise RuntimeError(
+                "RAILOS_EVIDENCE_SIGNING_KEY is not valid base64 of an Ed25519 "
+                "private key (raw 32 bytes or PKCS8 PEM)"
+            ) from exc
+    if key_file:
+        return ManifestSigner.from_private_bytes(pathlib.Path(key_file).read_bytes())
+    if os.getenv("RAILOS_ALLOW_EPHEMERAL_SIGNING_KEY") == "true":
+        # Tests and local runs: signatures verify within the process and are
+        # worthless outside it, which is the honest outcome for a throwaway key.
+        return ManifestSigner()
+    raise RuntimeError(
+        "RAILOS_EVIDENCE_SIGNING_KEY (or _KEY_FILE) is required. Generate one with "
+        "`python -c \"import base64,os; print(base64.b64encode(os.urandom(32)).decode())\"`."
+    )
+
+
 class EvidenceVerificationService:
     """Core verification service that audits captured evidence and signs manifests."""
 
     def __init__(self, object_store: ObjectStore, signer: ManifestSigner | None = None):
         self.store = object_store
-        self.signer = signer or ManifestSigner()
+        self.signer = signer or _configured_signer()
 
     def verify_evidence(
         self,

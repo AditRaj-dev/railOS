@@ -9,6 +9,8 @@ interface SimulationOptions {
   spawnIntervalMs?: number;
   lifecycleIntervalMs?: number;
   maxReports?: number;
+  /** Start spawning immediately. Off by default: see the note on `running`. */
+  autoStart?: boolean;
 }
 
 export function useReportSimulation(segments: RailwaySegment[], options: SimulationOptions = {}) {
@@ -17,7 +19,10 @@ export function useReportSimulation(segments: RailwaySegment[], options: Simulat
   const lifecycleIntervalMs = options.lifecycleIntervalMs ?? 1_000;
   const maxReports = options.maxReports ?? 12;
   const [reports, setReports] = useState<ReportedArea[]>([]);
-  const [running, setRunning] = useState(true);
+  // Off until an operator starts it from ReportSimulationControls. These
+  // reports are invented; the digital twin must not show them next to real
+  // network geometry unless somebody explicitly asked for a simulation.
+  const [running, setRunning] = useState(options.autoStart ?? false);
   const randomRef = useRef(createSeededRandom(seed));
   const sequenceRef = useRef(0);
 

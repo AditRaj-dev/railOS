@@ -282,18 +282,6 @@ class NetworkApiTests(unittest.TestCase):
         resp=self.client.get("/api/v1/network/geojson")
         self.assertEqual(resp.status_code,401)
 
-    def test_demo_reset_reports_real_counts(self):
-        admin={"X-RailOS-User":"admin-1","X-RailOS-Role":"ADMIN"}
-        resp=self.client.post("/api/v1/demo/reset",headers=admin)
-        self.assertEqual(resp.status_code,200)
-        counts=resp.json()["counts"]
-        self.assertEqual(counts["tasks"],len(main.state.tasks))
-        self.assertEqual(counts["defects"],len(main.state.defects))
-        self.assertEqual(counts["movements"],len(main.state.trains))
-        self.assertEqual(counts["windows"],len(main.state.windows))
-        self.assertEqual(counts["tasks"],15)
-        self.assertEqual(counts["defects"],4)
-
     def test_simulator_scenario_endpoint(self):
         resp=self.client.post("/api/v1/simulator/scenarios/train_delayed",headers=HEADERS,json={})
         self.assertEqual(resp.status_code,200)

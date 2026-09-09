@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS users (user_id text PRIMARY KEY, display_name text NOT NULL, role text NOT NULL);
+-- users is defined by 005_evidence_system.sql, which owns authentication.
+-- A stub here won a CREATE TABLE IF NOT EXISTS race and left the auth
+-- columns (password_hash, employee_id, department) permanently absent.
 CREATE TABLE IF NOT EXISTS roles (role text PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS resources (resource_id text PRIMARY KEY, resource_type text NOT NULL, department text NOT NULL, home_section_id text NOT NULL);
 CREATE TABLE IF NOT EXISTS dependencies (predecessor_task_id text NOT NULL, successor_task_id text NOT NULL, lag_minutes integer NOT NULL DEFAULT 0, PRIMARY KEY (predecessor_task_id, successor_task_id));

@@ -5,7 +5,7 @@ class AppStrings {
     'en': {
       'app_title': 'Railblock Field Evidence',
       'login_title': 'Field Supervisor Login',
-      'emp_id_hint': 'Employee ID (e.g. EMP901)',
+      'emp_id_hint': 'Employee ID',
       'password_hint': 'Enter Password',
       'login_btn': 'Authenticate & Sync',
       'assigned_tasks': 'Assigned Work Tasks',
@@ -30,7 +30,7 @@ class AppStrings {
     'hi': {
       'app_title': 'रेलब्लॉक फील्ड साक्ष्य (Railblock)',
       'login_title': 'फील्ड सुपरवाइजर लॉगिन',
-      'emp_id_hint': 'कर्मचारी आईडी (जैसे EMP901)',
+      'emp_id_hint': 'कर्मचारी आईडी',
       'password_hint': 'पासवर्ड दर्ज करें',
       'login_btn': 'प्रमाणित करें एवं सिंक करें',
       'assigned_tasks': 'आवंटित कार्य (Tasks)',

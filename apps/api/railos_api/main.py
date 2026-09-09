@@ -10,7 +10,7 @@ from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, WebSoc
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from railos_data import geometry_intersects_bbox
 from railos_model import (
     Asset, AuthoritySignature, BlockBurst, BlockRequest, BlockRequestStatus,
@@ -25,7 +25,7 @@ from railos_model import (
     WorkExecutionStatus, WorkStep,
 )
 from railos_model.enums import MIN_MACHINE_BLOCK_MINUTES
-from .auth import decode_access_token
+from .auth import ENABLE_SYNTHETIC_AUTH, decode_access_token
 from .roles import OPERATIONAL_ROLES as VALID_ROLES, normalize_role
 from .possession import (
     AUTHORITY_ROLES,
@@ -46,6 +46,11 @@ from .possession import (
     get_allowed_actions_for_role,
     parse_datetime,
 )
+
+# Whether this deployment's records are simulated. Every response used to
+# stamp "synthetic": SYNTHETIC_MODE as a literal, so a real deployment would have
+# labelled genuine operational records as simulation output.
+SYNTHETIC_MODE = os.getenv("RAILOS_SYNTHETIC_MODE", "true").lower() in {"1", "true", "yes"}
 
 DEMO_EPOCH = "2026-09-09T00:00:00+05:30"
 DEMO_NOW = "2026-09-08T06:00:00+00:00"
@@ -148,6 +153,15 @@ class BlockRequestCreate(DTO):
     reason: str = ""
 
 
+# The exact wire contract of BlockRequestCreate. BlockRequestCreate is
+# populate_by_name=False and extra="forbid", so a client that sends a key not in
+# this set — or omits a required one — is rejected outright. The composer builds
+# its payload from the same list; test_ticket_payload_contract.py pins both ends.
+BLOCK_REQUEST_CREATE_FIELDS = frozenset(
+    field.alias or name for name, field in BlockRequestCreate.model_fields.items()
+)
+
+
 class BlockRequestStatusUpdate(DTO):
     status: BlockRequestStatus
     reason: str = ""
@@ -178,12 +192,24 @@ class PossessionTransitionRequest(DTO):
     cause_category: str | None = None
 
 class EmergencyRequest(DTO):
+    """Where the emergency actually is.
+
+    Every location field is required. Defaulting them meant an emergency
+    reported without a location was silently recorded against a fixed section
+    and asset, and the generated task ignored the request entirely.
+    """
+
     title: str
     corridor_id: str
-    section_id: str = "SEC_KRJ_SMQ"
-    asset_id: str = "TRACK_SEC_KRJ_SMQ_DOWN"
+    section_id: str
+    asset_id: str
+    department: Department
+    track: Track
+    km_start: float = Field(ge=0)
+    km_end: float = Field(gt=0)
+    task_type: TaskType
     severity: Severity = Severity.IMR
-    duration_minutes: int = Field(default=60, gt=0)
+    duration_minutes: int = Field(gt=0)
 
 class ReplanRequest(DTO):
     parent_plan_id: str
@@ -267,7 +293,7 @@ ROLE_DEPARTMENT: dict[str, Department] = {
 BROAD_TICKET_ROLES = frozenset({"ADMIN", "CONTROL_OFFICER", "PLANNER", "MANAGEMENT"})
 SUBMITTER_TICKET_ROLES = frozenset({
     "ENGINEERING", "SIGNAL_TELECOM", "TRACTION", "FIELD_SUPERVISOR",
-    "ADMIN", "CONTROL_OFFICER", "PLANNER",
+    "ADMIN", "CONTROL_OFFICER", "PLANNER", "MANAGEMENT",
 })
 
 
@@ -299,16 +325,66 @@ def _authorize_ticket_department(user: User, department: Department) -> None:
 
 def _request_provenance() -> DataProvenance:
     return DataProvenance(
-        synthetic=True,
-        label="Synthetic Hackathon Simulation",
+        synthetic=SYNTHETIC_MODE,
+        label="Synthetic Hackathon Simulation" if SYNTHETIC_MODE else "RailOS operational record",
         source="RailOS guided ticket intake",
-        sourceType="synthetic",
-        isOperationallyAuthoritative=False,
+        sourceType="synthetic" if SYNTHETIC_MODE else "operational",
+        isOperationallyAuthoritative=not SYNTHETIC_MODE,
         generatedAt=datetime.now(timezone.utc).isoformat(),
     )
 
+def load_reference_data(repo, *, include_operational: bool = False) -> dict[str, int]:
+    """Load the network reference data into a repository.
+
+    Reference data is the railway itself: corridors, sections, assets, and the
+    resources that work on them. Operational records - tasks, defects, train
+    movements, block windows, goods forecasts - are things that happen on it,
+    and in a real deployment they arrive through the API or the ingestion
+    adapters rather than a file. `include_operational` imports them anyway,
+    which is what the dev/test backend and a demo import want.
+    """
+    from railos_data import load_network, load_world
+
+    world = load_world(os.getenv("RAILOS_DATASET_DIR", "datasets"))
+    repo.network = load_network(os.getenv("RAILOS_NETWORK_DATA", "datasets/network.json"))
+
+    groups = [
+        ("corridors", world.corridors, "corridorId"),
+        ("assets", world.assets, "assetId"),
+        ("resources", world.resources, "resourceId"),
+    ]
+    if include_operational:
+        groups += [
+            ("tasks", world.tasks, "taskId"),
+            ("defects", world.defects, "defectId"),
+            ("trains", world.trains, "trainId"),
+            ("goods", world.goods, "rakeId"),
+            ("windows", world.windows, "windowId"),
+        ]
+
+    counts = {}
+    for name, values, key in groups:
+        setattr(repo, name, {getattr(value, key): value for value in values})
+        counts[name] = len(values)
+
+    if include_operational:
+        repo.dependencies = {
+            f"{value.predecessorTaskId}:{value.successorTaskId}": value
+            for value in world.dependencies
+        }
+        counts["dependencies"] = len(repo.dependencies)
+
+    repo.horizon_minutes = world.horizonMinutes
+    repo.horizon_start_iso = world.horizonStartIso
+    counts["networkZones"] = len(repo.network.zones)
+    return counts
+
+
 class Repository:
     """Atomic deterministic repository used by demo and tests."""
+    _txn_baseline: dict[str, dict] | None = None
+    _txn_event_count: int = 0
+
     def __init__(self):
         self.lock = threading.RLock()
         self.subscribers: list[asyncio.Queue] = []
@@ -324,78 +400,21 @@ class Repository:
             self.commit()
 
     def _seed(self):
-        from railos_data import load_network, load_world
+        """Reference data for the in-memory backend only.
+
+        The memory repository is the dev/test backend and has no other source
+        for the network, so it reads the dataset files. The Postgres backend
+        never calls this: it loads what was imported into railos_entity by
+        scripts/import_reference_data.py, so a real deployment holds only the
+        records somebody actually put there.
+        """
         from integrations.adapters import ADAPTERS
 
         self.adapters = ADAPTERS
         for name, adapter in ADAPTERS.items():
             self.ingestion_records[name] = adapter.normalize(adapter.fetch("seed")[0])
 
-        world = load_world(os.getenv("RAILOS_DATASET_DIR", "datasets"))
-        self.network = load_network(os.getenv("RAILOS_NETWORK_DATA", "datasets/network.json"))
-        for name, values, key in (
-            ("corridors", world.corridors, "corridorId"),
-            ("assets", world.assets, "assetId"),
-            ("tasks", world.tasks, "taskId"),
-            ("defects", world.defects, "defectId"),
-            ("trains", world.trains, "trainId"),
-            ("goods", world.goods, "rakeId"),
-            ("windows", world.windows, "windowId"),
-            ("resources", world.resources, "resourceId"),
-        ):
-            setattr(self, name, {getattr(value, key): value for value in values})
-        self.dependencies = {
-            f"{value.predecessorTaskId}:{value.successorTaskId}": value
-            for value in world.dependencies
-        }
-        self.horizon_minutes = world.horizonMinutes
-        self.horizon_start_iso = world.horizonStartIso
-
-        # Demo field-evidence work steps for TSK-0001 (survives restarts via
-        # this repository, unlike the rest of FieldEvidenceState in
-        # evidence_routes.py which is session-scoped in-memory auth state).
-        self.work_steps = {
-            step.stepId: step for step in (
-                WorkStep(
-                    stepId="stp-101", taskId="TSK-0001", stepIndex=1,
-                    title="Pre-work Site Inspection & Ballast Profile",
-                    description="Photograph the initial ballast shoulder and check fishplate clearances.",
-                    requiresPhoto=True, requiresVideo=False,
-                    targetLatitude=28.6139, targetLongitude=77.2090, targetRadiusMeters=100.0,
-                    status=WorkExecutionStatus.READY,
-                ),
-                WorkStep(
-                    stepId="stp-102", taskId="TSK-0001", stepIndex=2,
-                    title="Tamping Machine Alignment & Depth Verification",
-                    description="Photograph tamper tines penetrating sleeper crib to prescribed depth.",
-                    requiresPhoto=True, requiresVideo=False,
-                    targetLatitude=28.6141, targetLongitude=77.2093, targetRadiusMeters=100.0,
-                    status=WorkExecutionStatus.READY,
-                ),
-                WorkStep(
-                    stepId="stp-103", taskId="TSK-0001", stepIndex=3,
-                    title="Post-Tamping Final Track Geometry Walkthrough",
-                    description="Continuous walkthrough video verifying cross-level, alignment, and track clear of equipment.",
-                    requiresPhoto=False, requiresVideo=True,
-                    targetLatitude=28.6140, targetLongitude=77.2091, targetRadiusMeters=100.0,
-                    status=WorkExecutionStatus.READY,
-                ),
-            )
-        }
-
-        # Seed realistic demo tickets, work steps, and field evidence
-        try:
-            from .demo_seed import seed_all_demo_data
-            from .evidence_routes import object_store, verification_service
-            seed_all_demo_data(self, object_store, verification_service)
-        except Exception:
-            pass
-
-        self.emit("DEMO_RESET", "demo", {
-            "tasks": len(self.tasks), "defects": len(self.defects),
-            "movements": len(self.trains), "windows": len(self.windows),
-            "networkZones": len(self.network.zones),
-        }, occurred_at=DEMO_NOW, notify=False)
+        load_reference_data(self, include_operational=True)
 
     @contextmanager
     def transaction(self):
@@ -411,6 +430,10 @@ class Repository:
             }
             events = copy.deepcopy(self.events)
             audit = copy.deepcopy(self.audit)
+            # The Postgres backend diffs against this to write only the rows
+            # that actually changed, instead of re-serializing the whole world.
+            self._txn_baseline = snapshot
+            self._txn_event_count = len(events)
             try:
                 yield
             except Exception as exc:
@@ -418,20 +441,23 @@ class Repository:
                 # collected signature must survive the exception handler.
                 if getattr(exc, "commit_transaction", False):
                     self.commit()
+                    self._txn_baseline = None
                     raise
                 for name, value in snapshot.items():
                     setattr(self, name, value)
                 self.events = events
                 self.audit = audit
+                self._txn_baseline = None
                 raise
             else:
                 self.commit()
+                self._txn_baseline = None
 
     def commit(self):
         pass
 
     def emit(self, event_type, entity_id, payload, actor="system", reason="", before=None, version=None, occurred_at=None, notify=True, *, recipient_role=None):
-        event = {"sequence":len(self.events)+1, "id":f"EVT-{len(self.events)+1:06d}", "type":event_type, "actor":actor, "action":event_type, "entityId":entity_id, "before":copy.deepcopy(before), "after":copy.deepcopy(payload), "planVersion":version, "reason":reason, "occurredAt":occurred_at or datetime.now(timezone.utc).isoformat(), "synthetic":True}
+        event = {"sequence":len(self.events)+1, "id":f"EVT-{len(self.events)+1:06d}", "type":event_type, "actor":actor, "action":event_type, "entityId":entity_id, "before":copy.deepcopy(before), "after":copy.deepcopy(payload), "planVersion":version, "reason":reason, "occurredAt":occurred_at or datetime.now(timezone.utc).isoformat(), "synthetic":SYNTHETIC_MODE}
         self.events.append(event); self.audit.append(copy.deepcopy(event))
         if notify:
             nid = f"NTF-{event['sequence']:06d}"
@@ -449,7 +475,7 @@ class Repository:
                 "groupingKey": f"{event_type}:{entity_id}",
                 "acknowledged": False,
                 "createdAt": event["occurredAt"],
-                "synthetic": True,
+                "synthetic": SYNTHETIC_MODE,
             }
         for queue in list(self.subscribers):
             try: queue.put_nowait(copy.deepcopy(event))
@@ -499,7 +525,17 @@ class Repository:
         }
 
 class PostgresRepository(Repository):
-    """Persists each atomic application snapshot to PostgreSQL JSONB."""
+    """Persists every entity as its own PostgreSQL row.
+
+    The previous implementation serialized the entire application - assets,
+    tickets, plans, possessions, evidence - into a single railos_state JSONB
+    row and rewrote all of it on every mutation. Nothing was queryable, and
+    two concurrent writers silently clobbered each other.
+
+    Each entity is now one row in railos_entity, and a commit writes only the
+    rows a transaction actually touched, diffed against the snapshot
+    Repository.transaction already takes.
+    """
 
     # Model registration is intentionally explicit.  A restart must restore
     # the authority-layer collections as typed contracts rather than raw dicts
@@ -515,51 +551,148 @@ class PostgresRepository(Repository):
         "evidence_items": EvidenceItem, "work_steps": WorkStep,
     }
 
+    # Singleton rows that are not per-entity collections.
+    META_COLLECTION = "_meta"
+
     def __init__(self):
         url = os.getenv("DATABASE_URL") or os.getenv("RAILOS_DATABASE_URL")
-        if not url: raise RuntimeError("DATABASE_URL is required for postgres backend")
-        try: import psycopg
-        except ImportError as exc: raise RuntimeError("psycopg is required for postgres backend") from exc
+        if not url:
+            raise RuntimeError("DATABASE_URL is required for postgres backend")
+        try:
+            import psycopg
+        except ImportError as exc:
+            raise RuntimeError("psycopg is required for postgres backend") from exc
         try:
             self.connection = psycopg.connect(url, connect_timeout=3, autocommit=True)
-            self.connection.execute("CREATE TABLE IF NOT EXISTS railos_state(namespace text NOT NULL,key text NOT NULL,payload jsonb NOT NULL,version bigint NOT NULL DEFAULT 1,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(namespace,key))")
-            row = self.connection.execute("SELECT payload FROM railos_state WHERE namespace=%s AND key=%s",("application","snapshot")).fetchone()
-        except Exception as exc: raise RuntimeError("postgres connectivity validation failed") from exc
-        if row:
-            self.lock=threading.RLock(); self.subscribers=[]
-            payload=row[0] if isinstance(row[0],dict) else json.loads(row[0])
-            # Initialise every collection before loading so snapshots written
-            # by an older process (before the possession layer existed) still
-            # rehydrate cleanly.
-            for name in COLLECTIONS:
-                setattr(self, name, {})
-            self.events = []
-            self.audit = []
-            self.network = NetworkCatalog()
-            self.horizon_minutes = 4320
-            self.horizon_start_iso = DEMO_EPOCH
-            for name,values in payload.items():
-                if name in {"events","audit"}: setattr(self,name,values); continue
-                if name == "network":
-                    self.network = NetworkCatalog.model_validate(values)
-                    continue
-                if name in {"horizon_minutes", "horizon_start_iso", "horizonMinutes", "horizonStartIso"}:
-                    setattr(self, "horizon_minutes" if name in {"horizon_minutes", "horizonMinutes"} else "horizon_start_iso", values)
-                    continue
-                if name not in COLLECTIONS or not isinstance(values, dict):
-                    continue
-                model=self.model_types.get(name)
-                setattr(self,name,{k:(model.model_validate(v) if model else v) for k,v in values.items()})
-            from integrations.adapters import ADAPTERS
-            self.adapters=ADAPTERS
-        else:
-            self._initializing=True; super().__init__(); self._initializing=False; self.commit()
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS railos_entity("
+                "collection text NOT NULL,id text NOT NULL,payload jsonb NOT NULL,"
+                "updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(collection,id))"
+            )
+            self.connection.execute(
+                "CREATE TABLE IF NOT EXISTS railos_event("
+                "sequence bigserial PRIMARY KEY,event_id text NOT NULL,type text NOT NULL,"
+                "entity_id text NOT NULL,actor text NOT NULL,payload jsonb NOT NULL,"
+                "occurred_at timestamptz NOT NULL)"
+            )
+        except Exception as exc:
+            raise RuntimeError("postgres connectivity validation failed") from exc
+
+        self.lock = threading.RLock()
+        self.subscribers = []
+        self._load()
+
+    def _load(self):
+        """Rehydrate every collection from its own rows."""
+        for name in COLLECTIONS:
+            setattr(self, name, {})
+        self.events = []
+        self.audit = []
+        self.network = NetworkCatalog()
+        self.horizon_minutes = 4320
+        self.horizon_start_iso = DEMO_EPOCH
+
+        rows = self.connection.execute(
+            "SELECT collection,id,payload FROM railos_entity"
+        ).fetchall()
+        for collection, key, payload in rows:
+            value = payload if isinstance(payload, dict) else json.loads(payload)
+            if collection == self.META_COLLECTION:
+                if key == "network":
+                    self.network = NetworkCatalog.model_validate(value)
+                elif key == "horizon":
+                    self.horizon_minutes = value.get("minutes", 4320)
+                    self.horizon_start_iso = value.get("startIso", DEMO_EPOCH)
+                continue
+            if collection not in COLLECTIONS:
+                continue
+            model = self.model_types.get(collection)
+            getattr(self, collection)[key] = model.model_validate(value) if model else value
+
+        reserved = {"id", "type", "entityId", "actor", "occurredAt", "sequence", "action"}
+        self.events = [
+            {
+                "sequence": row[0], "id": row[1], "type": row[2], "action": row[2],
+                "entityId": row[3], "actor": row[4],
+                **(row[5] if isinstance(row[5], dict) else json.loads(row[5])),
+                "occurredAt": row[6].isoformat() if hasattr(row[6], "isoformat") else row[6],
+            }
+            for row in self.connection.execute(
+                "SELECT sequence,event_id,type,entity_id,actor,payload,occurred_at "
+                "FROM railos_event ORDER BY sequence"
+            ).fetchall()
+        ]
+        self.audit = list(self.events)
+        self._txn_event_count = len(self.events)
+
+        from integrations.adapters import ADAPTERS
+        self.adapters = ADAPTERS
+
+    @staticmethod
+    def _dump(value):
+        return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
 
     def commit(self):
-        if getattr(self,"_initializing",False): return
-        payload = json.dumps(self.serializable(), default=str)
+        baseline = self._txn_baseline
+        upserts = []
+        deletes = []
+
+        for name in COLLECTIONS:
+            current = getattr(self, name, {}) or {}
+            # No transaction context (startup import, explicit commit): write
+            # everything currently held.
+            previous = {} if baseline is None else (baseline.get(name) or {})
+            for key, value in current.items():
+                # Pydantic models compare structurally, so an untouched entity
+                # is skipped without being serialized at all.
+                if key not in previous or previous[key] != value:
+                    upserts.append((name, str(key), json.dumps(self._dump(value), default=str)))
+            for key in previous:
+                if key not in current:
+                    deletes.append((name, str(key)))
+
+        upserts.append((
+            self.META_COLLECTION, "network",
+            json.dumps(self.network.model_dump(mode="json"), default=str),
+        ))
+        upserts.append((
+            self.META_COLLECTION, "horizon",
+            json.dumps({
+                "minutes": getattr(self, "horizon_minutes", 4320),
+                "startIso": getattr(self, "horizon_start_iso", DEMO_EPOCH),
+            }),
+        ))
+
+        new_events = self.events[self._txn_event_count:] if baseline is not None else self.events
+
         with self.connection.transaction():
-            self.connection.execute("INSERT INTO railos_state(namespace,key,payload,version) VALUES(%s,%s,%s,1) ON CONFLICT(namespace,key) DO UPDATE SET payload=EXCLUDED.payload,version=railos_state.version+1,updated_at=now()",("application","snapshot",payload))
+            if upserts:
+                self.connection.cursor().executemany(
+                    "INSERT INTO railos_entity(collection,id,payload) VALUES(%s,%s,%s) "
+                    "ON CONFLICT(collection,id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=now()",
+                    upserts,
+                )
+            if deletes:
+                self.connection.cursor().executemany(
+                    "DELETE FROM railos_entity WHERE collection=%s AND id=%s", deletes
+                )
+            if new_events:
+                reserved = {"id", "type", "entityId", "actor", "occurredAt", "sequence", "action"}
+                self.connection.cursor().executemany(
+                    "INSERT INTO railos_event(event_id,type,entity_id,actor,payload,occurred_at) "
+                    "VALUES(%s,%s,%s,%s,%s,%s)",
+                    [
+                        (
+                            event.get("id", ""), event.get("type", ""),
+                            str(event.get("entityId", "")), event.get("actor", "system"),
+                            json.dumps({k: v for k, v in event.items() if k not in reserved}, default=str),
+                            event.get("occurredAt"),
+                        )
+                        for event in new_events
+                    ],
+                )
+        self._txn_event_count = len(self.events)
+
 
 def repository_factory():
     backend = os.getenv("RAILOS_STORAGE_BACKEND","memory").lower()
@@ -638,6 +771,12 @@ def auth(
             raise HTTPException(403, {"code": "FORBIDDEN", "message": "token department is invalid"}) from exc
         return User(userId=user_id, role=normalized, department=parsed_department)
 
+    # The header path asserts an identity and a role with no credentials at
+    # all, so it is gated on the same flag as auth.py's. Ungated, anyone could
+    # send X-RailOS-Role: ADMIN and approve plans, sign sanctions and drive
+    # possessions on a deployed instance.
+    if not ENABLE_SYNTHETIC_AUTH:
+        raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"Bearer token is required"})
     if not user:
         raise HTTPException(401,{"code":"UNAUTHENTICATED","message":"X-RailOS-User is required"})
     normalized = normalize_role(role)
@@ -710,7 +849,7 @@ def _parse_network_limit(value:str|None):
 
 def _network_properties(*,entity_type:str,entity_id:str,layer:str,code:str|None,name:str|None,section_id:str|None,division_id:str|None,zone_id:str|None,planning_enabled:bool,metrics:dict[str,Any],provenance:Any):
     provenance_data=provenance.model_dump(by_alias=True,mode="json") if hasattr(provenance,"model_dump") else provenance
-    return {"entityType":entity_type,"entityId":entity_id,"layer":layer,"code":code,"name":name,"sectionId":section_id,"divisionId":division_id,"zoneId":zone_id,"planningEnabled":planning_enabled,"metrics":metrics,"synthetic":bool(provenance_data.get("synthetic",True)),"provenance":provenance_data}
+    return {"entityType":entity_type,"entityId":entity_id,"layer":layer,"code":code,"name":name,"sectionId":section_id,"divisionId":division_id,"zoneId":zone_id,"planningEnabled":planning_enabled,"metrics":metrics,"synthetic":bool(provenance_data.get("synthetic",SYNTHETIC_MODE)),"provenance":provenance_data}
 
 @app.exception_handler(HTTPException)
 async def http_error(_,exc):
@@ -720,7 +859,7 @@ async def http_error(_,exc):
 @app.exception_handler(RequestValidationError)
 async def validation_error(_,exc): return JSONResponse(error_body("VALIDATION_ERROR","request validation failed",exc.errors()),status_code=422)
 
-def listed(values): return {"items":[v.model_dump(by_alias=True,mode="json") if hasattr(v,"model_dump") else v for v in values.values()],"count":len(values),"synthetic":True,"scenario":"GZB_ALJN_DEMO"}
+def listed(values): return {"items":[v.model_dump(by_alias=True,mode="json") if hasattr(v,"model_dump") else v for v in values.values()],"count":len(values),"synthetic":SYNTHETIC_MODE}
 
 
 def _ticket_actions(request: BlockRequest, user: User) -> list[str]:
@@ -845,6 +984,34 @@ def _validate_request_location(body: BlockRequestCreate, asset: Asset, section) 
         })
 
 
+def _section_km_bounds() -> dict[str, dict[str, float]]:
+    """Planable km range per section, keyed by sectionId.
+
+    The network catalogue's RailwaySection carries no chainage, so a client
+    listing sections cannot tell an operator that SEC_SMQ_ALJN starts at km 88.
+    The corridor's BlockSection does, and it is the same record
+    _validate_request_location enforces against — so the bounds the composer
+    shows and the bounds the server rejects on cannot drift apart.
+    """
+    bounds: dict[str, dict[str, float]] = {}
+    for corridor in state.corridors.values():
+        for section in corridor.sections:
+            bounds[section.sectionId] = {
+                "minKm": section.startM / 1000,
+                "maxKm": section.endM / 1000,
+            }
+    return bounds
+
+
+def _network_section_view(section, bounds: dict[str, dict[str, float]] | None = None) -> dict[str, Any]:
+    """Serialize a RailwaySection with its planable km range attached."""
+    data = section.model_dump(by_alias=True, mode="json")
+    known = (bounds if bounds is not None else _section_km_bounds()).get(section.sectionId)
+    if known:
+        data |= known
+    return data
+
+
 def _build_linked_task(body: BlockRequestCreate, request_id: str, asset: Asset) -> MaintenanceTask:
     requirements = TASK_REQUIREMENTS.get(body.task_type, {})
     due_minute = body.due_minute if body.due_minute is not None else body.requested_end
@@ -926,7 +1093,7 @@ def list_ticket_task_types(user: User = Depends(auth)):
         for department, task_types in DEPARTMENT_TASK_TYPES.items()
         for task_type in sorted(task_types, key=lambda t: t.value)
     ]
-    return {"items": items, "count": len(items), "synthetic": True}
+    return {"items": items, "count": len(items), "synthetic": SYNTHETIC_MODE}
 
 
 @app.get("/api/v1/block-requests")
@@ -945,7 +1112,7 @@ def list_block_requests(department:Department|None=None,status:BlockRequestStatu
         and (status is None or r.status == status)
         and (sectionId is None or r.sectionId == sectionId)
     ]
-    return {"items": [_ticket_view(r, user) for r in items], "count": len(items), "synthetic": True, "scenario": "GZB_ALJN_DEMO"}
+    return {"items": [_ticket_view(r, user) for r in items], "count": len(items), "synthetic": SYNTHETIC_MODE}
 
 @app.get("/api/v1/block-requests/{request_id}")
 def get_block_request(request_id:str,user:User=Depends(auth)):
@@ -973,24 +1140,72 @@ def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header
     section = _resolve_request_section(body)
     asset = _resolve_request_asset(body)
     _validate_request_location(body, asset, section)
+    # --- Phase 1a: explicit field-level pre-validation ---
+    # These mirror the BlockRequest model validators but give field-targeted 422s
+    # so errorDetails() in the composer can highlight the right step, instead of
+    # letting a raw pydantic ValidationError escape to 500.
+    if body.km_end <= body.km_start:
+        raise HTTPException(422, {
+            "code": "KM_RANGE_INVALID",
+            "message": f"kmEnd ({body.km_end}) must be greater than kmStart ({body.km_start})",
+            "details": {"field": "kmEnd"},
+        })
+    window_minutes = body.requested_end - body.requested_start
+    if body.estimated_duration > window_minutes:
+        floor = _task_type_min_duration(body.task_type)
+        if body.estimated_duration < floor:
+            detail_msg = (
+                f"{body.task_type.value.replace('_', ' ').title()} needs at least {floor} min "
+                f"under HC-002, but the requested window is only {window_minutes} min — "
+                f"both constraints cannot be satisfied simultaneously."
+            )
+        else:
+            detail_msg = (
+                f"estimatedDuration ({body.estimated_duration} min) must fit inside "
+                f"the requested window ({window_minutes} min)."
+            )
+        raise HTTPException(422, {
+            "code": "DURATION_EXCEEDS_WINDOW",
+            "message": detail_msg,
+            "details": {
+                "field": "estimatedDuration",
+                "estimatedDuration": body.estimated_duration,
+                "windowMinutes": window_minutes,
+            },
+        })
+    effective_due = body.due_minute if body.due_minute is not None else body.requested_end
+    if effective_due < body.requested_end:
+        raise HTTPException(422, {
+            "code": "DUE_BEFORE_WINDOW_END",
+            "message": f"dueMinute ({effective_due}) must be at or after requestedEnd ({body.requested_end})",
+            "details": {"field": "dueMinute"},
+        })
+    # --- end Phase 1a ---
     request_id = body.request_id or f"REQ-{uuid.uuid4().hex[:10].upper()}"
     if request_id in state.block_requests:
         raise HTTPException(409, {"code": "REQUEST_ALREADY_EXISTS", "message": "Ticket ID already exists"})
     task = _build_linked_task(body, request_id, asset)
     now = datetime.now(timezone.utc).isoformat()
-    request = BlockRequest(
-        requestId=request_id, department=body.department, corridorId=body.corridor_id,
-        sectionId=body.section_id, assetId=asset.assetId, track=body.track,
-        kmStart=body.km_start, kmEnd=body.km_end, taskType=body.task_type,
-        severity=body.severity, criticality=body.criticality if body.criticality is not None else body.severity,
-        dueMinute=body.due_minute if body.due_minute is not None else body.requested_end,
-        estimatedDuration=body.estimated_duration, blockRequired=body.block_required,
-        blockType=body.block_type, requestedStart=body.requested_start, requestedEnd=body.requested_end,
-        status=BlockRequestStatus.REQUESTED, linkedTaskId=task.taskId,
-        requestedBy=user.user_id, requestedByRole=normalize_role(user.role),
-        createdAtUtc=now, updatedAtUtc=now, reason=body.reason,
-        provenance=_request_provenance(),
-    )
+    try:
+        request = BlockRequest(
+            requestId=request_id, department=body.department, corridorId=body.corridor_id,
+            sectionId=body.section_id, assetId=asset.assetId, track=body.track,
+            kmStart=body.km_start, kmEnd=body.km_end, taskType=body.task_type,
+            severity=body.severity, criticality=body.criticality if body.criticality is not None else body.severity,
+            dueMinute=body.due_minute if body.due_minute is not None else body.requested_end,
+            estimatedDuration=body.estimated_duration, blockRequired=body.block_required,
+            blockType=body.block_type, requestedStart=body.requested_start, requestedEnd=body.requested_end,
+            status=BlockRequestStatus.REQUESTED, linkedTaskId=task.taskId,
+            requestedBy=user.user_id, requestedByRole=normalize_role(user.role),
+            createdAtUtc=now, updatedAtUtc=now, reason=body.reason,
+            provenance=_request_provenance(),
+        )
+    except ValidationError as exc:
+        raise HTTPException(422, {
+            "code": "BLOCK_REQUEST_INVALID",
+            "message": "the ticket could not be created due to a constraint violation",
+            "details": {"errors": exc.errors()},
+        }) from exc
     with state.transaction():
         state.block_requests[request.requestId] = request
         state.tasks[task.taskId] = task
@@ -998,6 +1213,7 @@ def create_block_request(body:BlockRequestCreate,idempotency_key:str|None=Header
         response = _ticket_view(request, user)
         if key: state.idempotency[key] = {"fingerprint": fingerprint, "response": response}
     return response
+
 
 @app.patch("/api/v1/block-requests/{request_id}/status")
 def update_block_request_status(request_id: str, body: BlockRequestStatusUpdate, user: User = Depends(auth)):
@@ -1020,22 +1236,7 @@ def update_block_request_status(request_id: str, body: BlockRequestStatusUpdate,
 
 @app.get("/health")
 @app.get("/api/v1/health")
-def health(): return {"status":"ok","synthetic":True,"storageBackend":os.getenv("RAILOS_STORAGE_BACKEND","memory")}
-
-@app.post("/api/v1/demo/reset")
-def reset(_:User=Depends(allow("ADMIN"))):
-    state.reset()
-    counts={"tasks":len(state.tasks),"defects":len(state.defects),"movements":len(state.trains),"windows":len(state.windows),
-        "critical":sum(t.severity>=9 for t in state.tasks.values()),"overdue":sum(t.overdueDays>0 for t in state.tasks.values())}
-    return {"status":"reset","counts":counts,"synthetic":True}
-
-@app.post("/api/v1/demo/seed")
-def seed_demo(_:User=Depends(allow("ADMIN", "CONTROL_OFFICER", "PLANNER"))):
-    from .demo_seed import seed_all_demo_data
-    from .evidence_routes import object_store, verification_service
-    summary = seed_all_demo_data(state, object_store, verification_service)
-    state.commit()
-    return {"status":"seeded","summary":summary,"synthetic":True}
+def health(): return {"status":"ok","synthetic":SYNTHETIC_MODE,"storageBackend":os.getenv("RAILOS_STORAGE_BACKEND","memory")}
 
 @app.get("/api/v1/corridors")
 def corridors(_:User=Depends(auth)): return listed(state.corridors)
@@ -1054,7 +1255,7 @@ def priority(_:User=Depends(auth)):
     try:
         from risk_engine import score_all
         results=score_all(state.world())
-        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":True}
+        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":SYNTHETIC_MODE}
     except (ImportError,AttributeError,TypeError):
         raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"risk engine is unavailable"})
 @app.get("/api/v1/maintenance/risk")
@@ -1062,7 +1263,7 @@ def risk(_:User=Depends(auth)):
     try:
         from risk_engine import assess_all
         results=assess_all(state.world())
-        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":True}
+        return {"items":[r.model_dump(by_alias=True,mode="json") if hasattr(r,"model_dump") else r for r in results.values()],"count":len(results),"synthetic":SYNTHETIC_MODE}
     except (ImportError,AttributeError,TypeError):
         raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"risk engine is unavailable"})
 @app.get("/api/v1/maintenance")
@@ -1158,28 +1359,33 @@ def generate(request:PlanRequest,idempotency_key:str|None=Header(None,alias="Ide
         raise HTTPException(422,{"code":"PLAN_FAILED_AUDIT","message":"all candidate plans failed safety audit","details":{"violations":all_violations[:10]}})
     with state.transaction():
         for plan in candidates: state.plans[plan.planId]=copy.deepcopy(plan); state.plan_versions[f"{plan.planId}:v{plan.planVersion}"]=copy.deepcopy(plan)
-        run_id=f"RUN-{len(state.runs)+1:06d}"; run={"id":run_id,"status":"COMPLETED","solverStatus":[p.solverStatus for p in candidates],"candidatePlanIds":[p.planId for p in candidates],"createdAt":datetime.now(timezone.utc).isoformat(),"synthetic":True}; state.runs[run_id]=run; state.emit("PLAN_GENERATED",run_id,run,user.user_id)
+        run_id=f"RUN-{len(state.runs)+1:06d}"; run={"id":run_id,"status":"COMPLETED","solverStatus":[p.solverStatus for p in candidates],"candidatePlanIds":[p.planId for p in candidates],"createdAt":datetime.now(timezone.utc).isoformat(),"synthetic":SYNTHETIC_MODE}; state.runs[run_id]=run; state.emit("PLAN_GENERATED",run_id,run,user.user_id)
         response={"optimizationRun":run,"candidatePlans":[p.model_dump(by_alias=True,mode="json") for p in candidates],"warnings":[w for p in candidates for w in p.warnings]}
         if key: state.idempotency[key]={"fingerprint":fingerprint,"response":response}
     return response
 
 @app.get("/api/v1/network/catalog")
-def network_catalog(_:User=Depends(auth)): return state.network.model_dump(by_alias=True,mode="json")|{"synthetic":True}
+def network_catalog(_:User=Depends(auth)):
+    data=state.network.model_dump(by_alias=True,mode="json")
+    bounds=_section_km_bounds()
+    data["sections"]=[_network_section_view(s,bounds) for s in state.network.sections]
+    return data|{"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/network/zones")
-def zones(_:User=Depends(auth)): return {"items":[z.model_dump(by_alias=True,mode="json") for z in state.network.zones],"count":len(state.network.zones),"synthetic":True}
+def zones(_:User=Depends(auth)): return {"items":[z.model_dump(by_alias=True,mode="json") for z in state.network.zones],"count":len(state.network.zones),"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/network/zones/{zone_id}/divisions")
 def divisions(zone_id:str,_:User=Depends(auth)):
     divs=[d for d in state.network.divisions if d.zoneId==zone_id]
-    return {"items":[d.model_dump(by_alias=True,mode="json") for d in divs],"count":len(divs),"synthetic":True}
+    return {"items":[d.model_dump(by_alias=True,mode="json") for d in divs],"count":len(divs),"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/network/divisions/{division_id}/sections")
 def sections_by_div(division_id:str,_:User=Depends(auth)):
     secs=[s for s in state.network.sections if s.divisionId==division_id]
-    return {"items":[s.model_dump(by_alias=True,mode="json") for s in secs],"count":len(secs),"synthetic":True}
+    bounds=_section_km_bounds()
+    return {"items":[_network_section_view(s,bounds) for s in secs],"count":len(secs),"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/network/sections/{section_id}")
 def section(section_id:str,_:User=Depends(auth)):
     sec=next((s for s in state.network.sections if s.sectionId==section_id),None)
     if sec is None: raise HTTPException(404,{"code":"NOT_FOUND","message":"section not found"})
-    data=sec.model_dump(by_alias=True,mode="json")
+    data=_network_section_view(sec)
     div=next((d for d in state.network.divisions if d.divisionId==sec.divisionId),None)
     if div:
         data["division"]={"divisionId":div.divisionId,"zoneId":div.zoneId,"name":div.name,"code":div.code}
@@ -1243,13 +1449,13 @@ def search(q:str=Query(""),_:User=Depends(auth)):
         if q_lower in s.code.lower() or q_lower in s.name.lower(): items.append({"entityType":"SECTION","entityId":s.sectionId,"code":s.code,"name":s.name,"zoneId":s.zoneId,"divisionId":s.divisionId,"sectionId":s.sectionId,"planningEnabled":s.planningEnabled})
     for st in state.network.stations:
         if q_lower in st.code.lower() or q_lower in st.name.lower(): items.append({"entityType":"STATION","entityId":st.stationId,"code":st.code,"name":st.name,"stationId":st.stationId,"planningEnabled":st.planningEnabled})
-    return {"items":items,"count":len(items),"synthetic":True}
+    return {"items":items,"count":len(items),"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/opportunities")
 def opportunities(_:User=Depends(auth)):
     try:
         from opportunity_engine import detect
         results=detect(state.world())
-        return {"items":[o.model_dump(by_alias=True,mode="json") if hasattr(o,"model_dump") else o for o in results],"count":len(results),"synthetic":True}
+        return {"items":[o.model_dump(by_alias=True,mode="json") if hasattr(o,"model_dump") else o for o in results],"count":len(results),"synthetic":SYNTHETIC_MODE}
     except (ImportError,AttributeError,TypeError):
         raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"opportunity engine is unavailable"})
 @app.get("/api/v1/bundles")
@@ -1261,7 +1467,7 @@ def bundles(_:User=Depends(auth)):
         world=state.world()
         priority={task_id:result.score for task_id,result in score_all(world).items()}
         results=build(world,detect(world),priority)
-        return {"items":[b.model_dump(by_alias=True,mode="json") if hasattr(b,"model_dump") else b for b in results],"count":len(results),"synthetic":True}
+        return {"items":[b.model_dump(by_alias=True,mode="json") if hasattr(b,"model_dump") else b for b in results],"count":len(results),"synthetic":SYNTHETIC_MODE}
     except (ImportError,AttributeError,TypeError):
         raise HTTPException(503,{"code":"ENGINE_UNAVAILABLE","message":"bundling engine is unavailable"})
 @app.post("/api/v1/simulator/scenarios/{scenario}")
@@ -1277,7 +1483,7 @@ def simulate_scenario(scenario:str,body:dict[str,Any]=Body(default_factory=dict)
         world=fn(state.world(),**body) if body else fn(state.world())
     except TypeError as exc:
         raise HTTPException(422,{"code":"VALIDATION_ERROR","message":str(exc)})
-    return {"scenario":scenario,"world":world.model_dump(by_alias=True,mode="json"),"synthetic":True}
+    return {"scenario":scenario,"world":world.model_dump(by_alias=True,mode="json"),"synthetic":SYNTHETIC_MODE}
 @app.get("/api/v1/optimization/{run_id}")
 @app.get("/api/v1/optimization/status/{run_id}")
 def optimization_status(run_id:str,_:User=Depends(auth)):
@@ -1558,7 +1764,7 @@ def decide(plan_id, body, target, user):
             state.assignments[a.taskId] = {
                 "id": a.taskId, "planId": plan_id, "planVersion": decided.planVersion,
                 "taskId": a.taskId, "blockId": a.blockId, "status": "READY",
-                "start": a.start, "end": a.end, "synthetic": True,
+                "start": a.start, "end": a.end, "synthetic": SYNTHETIC_MODE,
             }
 
         # Keep the collected signatures attached to the immutable approved
@@ -1736,9 +1942,18 @@ def work_update(assignment_id:str,body:WorkUpdate,user:User=Depends(allow("FIELD
 @app.post("/api/v1/emergencies")
 def create_emergency(body:EmergencyRequest,user:User=Depends(allow("CONTROL_OFFICER","ENGINEERING","SIGNAL_TELECOM","TRACTION","FIELD_SUPERVISOR"))):
     eid="EMG-"+hashlib.sha1(body.model_dump_json(by_alias=True).encode()).hexdigest()[:8].upper()
-    task=MaintenanceTask(taskId=eid,department=Department.ENGG,assetId=body.asset_id,corridorId=body.corridor_id,sectionId=body.section_id,track=Track.DOWN,kmStart=72.4,kmEnd=72.41,taskType=TaskType.RAIL_REPLACEMENT,severity=10,criticality=10,dueMinute=body.duration_minutes,estimatedDuration=body.duration_minutes,status=TaskStatus.PENDING,blockType=BlockType.EMERGENCY,isEmergency=True,detectedAtMinute=0)
-    with state.transaction(): state.emergencies[eid]={"id":eid,"request":body.model_dump(mode="json"),"task":task.model_dump(mode="json"),"synthetic":True}; state.emit("EMERGENCY_CREATED",eid,state.emergencies[eid],user.user_id)
-    return {"id":eid,"replanRequired":True,"synthetic":True}
+    if body.section_id not in {section.sectionId for corridor in state.corridors.values() for section in corridor.sections}:
+        raise HTTPException(422,{"code":"UNKNOWN_SECTION","message":"the reported section does not exist","details":{"field":"sectionId","sectionId":body.section_id}})
+    if body.asset_id not in state.assets:
+        raise HTTPException(422,{"code":"UNKNOWN_ASSET","message":"the reported asset does not exist","details":{"field":"assetId","assetId":body.asset_id}})
+    if body.km_end <= body.km_start:
+        raise HTTPException(422,{"code":"KM_RANGE_INVALID","message":"kmEnd must be greater than kmStart","details":{"field":"kmEnd"}})
+    try:
+        task=MaintenanceTask(taskId=eid,department=body.department,assetId=body.asset_id,corridorId=body.corridor_id,sectionId=body.section_id,track=body.track,kmStart=body.km_start,kmEnd=body.km_end,taskType=body.task_type,severity=10,criticality=10,dueMinute=body.duration_minutes,estimatedDuration=body.duration_minutes,status=TaskStatus.PENDING,blockType=BlockType.EMERGENCY,isEmergency=True,detectedAtMinute=0)
+    except ValidationError as exc:
+        raise HTTPException(422,{"code":"EMERGENCY_TASK_INVALID","message":"the reported emergency does not satisfy the task constraints","details":{"errors":exc.errors()}}) from exc
+    with state.transaction(): state.emergencies[eid]={"id":eid,"request":body.model_dump(mode="json"),"task":task.model_dump(mode="json"),"synthetic":SYNTHETIC_MODE}; state.emit("EMERGENCY_CREATED",eid,state.emergencies[eid],user.user_id)
+    return {"id":eid,"replanRequired":True,"synthetic":SYNTHETIC_MODE}
 
 @app.post("/api/v1/replanning/generate")
 def replan_generate(body:ReplanRequest,user:User=Depends(allow("CONTROL_OFFICER","PLANNER"))):
@@ -2070,7 +2285,7 @@ def list_possessions(
         if sectionId and p.sectionId != sectionId:
             continue
         views.append(build_possession_view(p, user.role, state))
-    return {"items": views, "count": len(views), "synthetic": True}
+    return {"items": views, "count": len(views), "synthetic": SYNTHETIC_MODE}
 
 @app.get("/api/v1/possessions/mine")
 def my_possessions(user: User = Depends(auth)):
@@ -2086,7 +2301,7 @@ def my_possessions(user: User = Depends(auth)):
             views.append(view)
         elif norm_role in {"ENGINEERING", "SIGNAL_TELECOM", "TRACTION", "FIELD_SUPERVISOR"}:
             views.append(view)
-    return {"items": views, "count": len(views), "synthetic": True}
+    return {"items": views, "count": len(views), "synthetic": SYNTHETIC_MODE}
 
 @app.get("/api/v1/possessions/{possession_id}")
 def get_possession(possession_id: str, user: User = Depends(auth)):
@@ -2210,12 +2425,12 @@ def backfill_possessions(user: User = Depends(allow("CONTROL_OFFICER"))):
                     pid = f"POS-{b.blockId}"
                     if pid not in state.possessions:
                         created.extend(open_possessions_for_plan(p, user.user_id, normalize_role(user.role)))
-    return {"createdPossessionIds": created, "count": len(created), "synthetic": True}
+    return {"createdPossessionIds": created, "count": len(created), "synthetic": SYNTHETIC_MODE}
 
 @app.get("/api/v1/block-bursts")
 def list_block_bursts(_: User = Depends(auth)):
     bursts = list(state.block_bursts.values())
-    return {"items": [b.model_dump(by_alias=True, mode="json") if hasattr(b, "model_dump") else b for b in bursts], "count": len(bursts), "synthetic": True}
+    return {"items": [b.model_dump(by_alias=True, mode="json") if hasattr(b, "model_dump") else b for b in bursts], "count": len(bursts), "synthetic": SYNTHETIC_MODE}
 
 @app.get("/api/v1/notifications")
 def notifications(recipientRole: str | None = None, _: User = Depends(auth)):
@@ -2223,7 +2438,7 @@ def notifications(recipientRole: str | None = None, _: User = Depends(auth)):
     if recipientRole:
         norm = normalize_role(recipientRole)
         items = [i for i in items if normalize_role(i.get("recipientRole")) == norm]
-    return {"items": items, "count": len(items), "synthetic": True}
+    return {"items": items, "count": len(items), "synthetic": SYNTHETIC_MODE}
 
 @app.post("/api/v1/notifications/{notification_id}/acknowledge")
 @app.post("/api/v1/notifications/{notification_id}/ack")
@@ -2259,11 +2474,11 @@ def analytics(_:User=Depends(auth)):
             "byCause": burst_by_cause,
             "items": [b.model_dump(by_alias=True, mode="json") if hasattr(b, "model_dump") else b for b in bursts],
         },
-        "synthetic": True,
+        "synthetic": SYNTHETIC_MODE,
     }
 
 @app.get("/api/v1/integrations/status")
-def integration_status(_:User=Depends(auth)): return {"synthetic":True,"scenario":"GZB_ALJN_DEMO","sources":{n:a.health() for n,a in state.adapters.items()},"ingestion":state.ingestion_records}
+def integration_status(_:User=Depends(auth)): return {"synthetic":SYNTHETIC_MODE,"sources":{n:a.health() for n,a in state.adapters.items()},"ingestion":state.ingestion_records}
 
 @app.get("/api/v1/events")
 def events(after:int=0,_:User=Depends(auth)): return {"events":[e for e in state.events if e["sequence"]>after],"nextSequence":len(state.events)}

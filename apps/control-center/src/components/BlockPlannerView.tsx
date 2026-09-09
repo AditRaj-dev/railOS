@@ -39,6 +39,13 @@ export const BlockPlannerView: React.FC = () => {
 
   const catalogQuery = useNetworkCatalog();
   const catalog = catalogQuery.data;
+  // The corridors the catalogue actually plans, rather than a hardcoded one.
+  const planableCorridorIds = useMemo(
+    () => [...new Set((catalog?.sections || [])
+      .filter((section) => section.planningEnabled && section.corridorId)
+      .map((section) => section.corridorId as string))],
+    [catalog]
+  );
   const plansQuery = useBlockPlans();
   const ticketsQuery = useBlockRequests({ status: 'REQUESTED' });
   const generateMutation = useGeneratePlan();
@@ -91,7 +98,7 @@ export const BlockPlannerView: React.FC = () => {
     setSafetyViolations([]);
     generateMutation.mutate(
       {
-        corridorIds: ['GZB-ALJN'],
+        corridorIds: planableCorridorIds,
         objectiveProfile: selectedMode,
         planningHorizon: new Date().toISOString(),
         // Empty selection means "everything planable", the previous behaviour.

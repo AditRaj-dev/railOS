@@ -18,8 +18,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _empController = TextEditingController(text: 'EMP901');
-  final _pwdController = TextEditingController(text: 'Field@123');
+  // Empty: the app used to ship a working supervisor credential in the form.
+  final _empController = TextEditingController();
+  final _pwdController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 

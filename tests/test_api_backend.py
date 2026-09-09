@@ -71,7 +71,11 @@ class ApiBackendTests(unittest.TestCase):
         parent=sample_plan(); main.state.plans[parent.planId]=copy.deepcopy(parent)
         fake_task=MaintenanceTask(taskId="TASK-001",department=Department.ENGG,assetId="ASSET-1",corridorId="GZB-ALJN",sectionId="SEC-GZB-DER",track=Track.DOWN,kmStart=0.0,kmEnd=0.5,taskType=TaskType.TAMPING,severity=5,criticality=5,dueMinute=100,estimatedDuration=60,status=TaskStatus.PENDING,blockType=BlockType.TRAFFIC)
         main.state.tasks["TASK-001"]=fake_task
-        emergency=self.client.post("/api/v1/emergencies",headers=CONTROL,json={"title":"IMR fracture","corridorId":"GZB-ALJN"})
+        emergency=self.client.post("/api/v1/emergencies",headers=CONTROL,json={
+            "title":"IMR fracture","corridorId":"GZB-ALJN","sectionId":"SEC_GZB_DER",
+            "assetId":"TRACK_SEC_GZB_DER_UP","department":"ENGG","track":"UP",
+            "kmStart":12.0,"kmEnd":12.05,"taskType":"RAIL_REPLACEMENT","durationMinutes":60,
+        })
         self.assertEqual(emergency.status_code,200); eid=emergency.json()["id"]
         def insert(world, task): clone=world.model_copy(deep=True); clone.tasks.append(task); return clone
         def replan(world, previous, now=0, reason=""):

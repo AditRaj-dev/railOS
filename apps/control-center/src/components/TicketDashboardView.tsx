@@ -5,6 +5,7 @@ import { AlertCircle, ArrowDown, ArrowUp, Inbox, Plus, RefreshCw, Route } from '
 import type { BlockRequest, BlockRequestStatus, DepartmentCode } from '@/lib/api';
 import { useBlockRequests, useUpdateBlockRequestStatus } from '@/lib/queries';
 import { useRailOSStore } from '@/store/railosStore';
+import { useAuthStore } from '@/store/authStore';
 import { DEMO_EPOCH_ISO, formatMinute } from '@/lib/time';
 import { BLOCK_REQUEST_STATUS_TOKENS, DEPARTMENT_TOKENS, getTokenDef } from './tokens';
 import { StatusChip } from './StatusChip';
@@ -21,14 +22,16 @@ const DEPARTMENT_TABS: Array<{ id: DepartmentCode; label: string }> = [
   { id: 'TRD', label: 'TRD' },
 ];
 
-/** Roles that own exactly one department queue and never see the others. */
+/** Roles that own exactly one department queue and never see the others.
+ * FIELD_SUPERVISOR is deliberately absent: a supervisor's department is a
+ * property of their account, not of their role, so it comes from the session. */
 const DEPARTMENT_BY_ROLE: Partial<Record<string, DepartmentCode>> = {
   ENGINEERING: 'ENGG',
   SIGNAL_TELECOM: 'SNT',
   TRACTION: 'TRD',
 };
 
-const BROAD_ROLES = ['ADMIN', 'CONTROL_OFFICER', 'PLANNER', 'MANAGEMENT', 'FIELD_SUPERVISOR'];
+const BROAD_ROLES = ['ADMIN', 'CONTROL_OFFICER', 'PLANNER', 'MANAGEMENT'];
 
 type SortField = 'createdAt' | 'severity';
 
@@ -59,7 +62,11 @@ function isBlockFinderReady(request: BlockRequest): boolean {
 
 export const TicketDashboardView: React.FC = () => {
   const userRole = useRailOSStore((state) => state.userRole);
-  const lockedDepartment = DEPARTMENT_BY_ROLE[userRole];
+  const sessionDepartment = useAuthStore((state) => state.session?.department);
+  // Role first (ENGINEERING/SNT/TRACTION are their department), then the
+  // account's own department. Without the fallback a FIELD_SUPERVISOR matches
+  // neither branch and is left with no queue at all.
+  const lockedDepartment = DEPARTMENT_BY_ROLE[userRole] ?? sessionDepartment;
   const isBroadRole = BROAD_ROLES.includes(userRole);
 
   const availableTabs: TabId[] = useMemo(() => (lockedDepartment

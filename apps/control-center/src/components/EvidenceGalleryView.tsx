@@ -12,11 +12,9 @@ import {
   CheckCircle2,
   XCircle,
   Search,
-  Upload,
 } from 'lucide-react';
 import { getEvidenceList, type EvidenceRecord } from '@/lib/api';
 import { EvidenceDetailModal } from './EvidenceDetailModal';
-import { EvidenceUploadModal } from './EvidenceUploadModal';
 
 type KindFilter = 'ALL' | 'PHOTO' | 'VIDEO';
 type StatusFilter = 'ALL' | EvidenceRecord['status'];
@@ -54,7 +52,6 @@ export function EvidenceGalleryView() {
   const [items, setItems] = useState<EvidenceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   const [kindFilter, setKindFilter] = useState<KindFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [search, setSearch] = useState('');
@@ -119,13 +116,6 @@ export function EvidenceGalleryView() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow transition-colors"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            UPLOAD DEMO EVIDENCE
-          </button>
           <button
             onClick={handleRefresh}
             disabled={loading}
@@ -294,15 +284,6 @@ export function EvidenceGalleryView() {
           evidence={selectedEvidence}
           onClose={() => setSelectedEvidence(null)}
           onReviewed={fetchData}
-        />
-      )}
-
-      {showUploadModal && (
-        <EvidenceUploadModal
-          onClose={() => setShowUploadModal(false)}
-          onUploaded={async () => {
-            await fetchData();
-          }}
         />
       )}
     </div>

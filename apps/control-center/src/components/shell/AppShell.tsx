@@ -3,7 +3,6 @@
 import React, { type ReactNode } from 'react';
 import { useRailOSStore, type UserRole } from '@/store/railosStore';
 import { useAuthStore } from '@/store/authStore';
-import { useResetDemo } from '@/lib/queries';
 import { setApiRole } from '@/lib/api';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -15,7 +14,6 @@ import {
   SlidersHorizontal,
   Smartphone,
   BarChart3,
-  RotateCcw,
   ShieldCheck,
   Film,
   Menu,
@@ -78,7 +76,6 @@ export function AppShell({ children }: AppShellProps) {
   const authStatus = useAuthStore((s) => s.status);
   const restoreSession = useAuthStore((s) => s.restoreSession);
   const logout = useAuthStore((s) => s.logout);
-  const resetDemoMutation = useResetDemo();
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [loginModalOpen, setLoginModalOpen] = React.useState(false);
 
@@ -133,10 +130,6 @@ export function AppShell({ children }: AppShellProps) {
     } catch {
       // Storage unavailable: the role still applies for this page's lifetime.
     }
-  };
-
-  const handleReset = () => {
-    resetDemoMutation.mutate();
   };
 
   const handleLogout = () => {
@@ -255,15 +248,6 @@ export function AppShell({ children }: AppShellProps) {
             <span className="hidden sm:inline">Panel</span>
           </button>
 
-          <button
-            onClick={handleReset}
-            disabled={resetDemoMutation.isPending}
-            title="Reset to Baseline Demo Scenario"
-            className="min-h-11 flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--bg-elevated)] hover:bg-[var(--bg-panel)] text-[var(--text-primary)] border border-[var(--border-default)] text-xs font-mono font-medium transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${resetDemoMutation.isPending ? 'animate-spin' : ''}`} />
-            <span>{resetDemoMutation.isPending ? 'Resetting...' : 'Reset Demo'}</span>
-          </button>
 
           {/* Mobile Menu Toggle */}
           <button

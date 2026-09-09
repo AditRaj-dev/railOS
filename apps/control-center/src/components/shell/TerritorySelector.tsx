@@ -14,17 +14,17 @@ function TerritorySelectorInner() {
   const { data: catalog } = useNetworkCatalog();
 
   const zones = catalog?.zones || [];
-  const defaultZone = zones[0]?.code || 'NCR';
+  const defaultZone = zones[0]?.code || '';
 
   const zone = searchParams.get('zone') || selectedZone || defaultZone;
   const currentZoneObj = zones.find(z => z.code === zone || z.zoneId === zone);
 
   const divisions = catalog?.divisions ? catalog.divisions.filter(d => !currentZoneObj || d.zoneId === currentZoneObj.zoneId) : [];
-  const division = searchParams.get('division') || selectedDivision || divisions[0]?.name || 'Delhi';
+  const division = searchParams.get('division') || selectedDivision || divisions[0]?.name || '';
   const currentDivObj = divisions.find(d => d.name === division || d.code === division || d.divisionId === division);
 
   const sections = catalog?.sections ? catalog.sections.filter(s => !currentDivObj || s.divisionId === currentDivObj.divisionId) : [];
-  const section = searchParams.get('section') || selectedSection || sections[0]?.code || 'GZB-ALJN';
+  const section = searchParams.get('section') || selectedSection || sections[0]?.code || '';
 
   const handleZoneChange = (newZone: string) => {
     setSelectedZone(newZone);
@@ -65,14 +65,7 @@ function TerritorySelectorInner() {
               <option key={z.zoneId} value={z.code}>{z.code} ({z.name})</option>
             ))
           ) : (
-            <>
-              <option value="NCR">NCR (Delhi)</option>
-              <option value="NR">Northern Region</option>
-              <option value="ER">Eastern Region</option>
-              <option value="CR">Central Region</option>
-              <option value="WR">Western Region</option>
-              <option value="SR">Southern Region</option>
-            </>
+            <option value="" disabled>No zones available</option>
           )}
         </select>
       </div>
@@ -91,10 +84,7 @@ function TerritorySelectorInner() {
               <option key={d.divisionId} value={d.name}>{d.name}</option>
             ))
           ) : (
-            <>
-              <option value="Delhi">Delhi</option>
-              <option value="Prayagraj">Prayagraj</option>
-            </>
+            <option value="" disabled>No divisions available</option>
           )}
         </select>
       </div>
@@ -113,11 +103,7 @@ function TerritorySelectorInner() {
               <option key={s.sectionId} value={s.code}>{s.name} ({s.code})</option>
             ))
           ) : (
-            <>
-              <option value="GZB-ALJN">Ghaziabad–Aligarh</option>
-              <option value="NDLS-GZB">New Delhi–Ghaziabad</option>
-              <option value="ALJN-TDL">Aligarh–Tundla</option>
-            </>
+            <option value="" disabled>No sections available</option>
           )}
         </select>
       </div>

@@ -12,7 +12,6 @@ import {
   Plus,
   RefreshCw,
   Lock,
-  Upload,
 } from 'lucide-react';
 import {
   getEvidenceList,
@@ -25,14 +24,12 @@ import {
 } from '@/lib/api';
 import { Modal } from './ui/Modal';
 import { EvidenceDetailModal } from './EvidenceDetailModal';
-import { EvidenceUploadModal } from './EvidenceUploadModal';
 
 export function EvidenceReviewView() {
   const [activeTab, setActiveTab] = useState<'flagged' | 'timeline' | 'supervisors'>('flagged');
   const [evidenceItems, setEvidenceItems] = useState<EvidenceRecord[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorRecord[]>([]);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceRecord | null>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [supervisorError, setSupervisorError] = useState<string | null>(null);
@@ -47,7 +44,7 @@ export function EvidenceReviewView() {
   const [newEmpId, setNewEmpId] = useState('');
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newSections, setNewSections] = useState('SEC_KRJ_SMQ, GZB-ALJN');
+  const [newSections, setNewSections] = useState('');
 
   const fetchData = useCallback(async () => {
     const request = ++requestId.current;
@@ -139,13 +136,6 @@ export function EvidenceReviewView() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow transition-colors"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            UPLOAD DEMO EVIDENCE
-          </button>
           <button
             onClick={handleRefresh}
             disabled={loading}
@@ -564,15 +554,6 @@ export function EvidenceReviewView() {
             </div>
           </form>
         </Modal>
-      )}
-
-      {showUploadModal && (
-        <EvidenceUploadModal
-          onClose={() => setShowUploadModal(false)}
-          onUploaded={async () => {
-            await fetchData();
-          }}
-        />
       )}
     </div>
   );

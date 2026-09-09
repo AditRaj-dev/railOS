@@ -6,9 +6,28 @@ from railos_api import main as railos_main
 from railos_api.evidence_routes import object_store
 from railos_api.main import app
 from railos_api.storage import MemoryObjectStore
-from railos_model import EvidenceKind, EvidenceStatus, GeoVerdict, ManifestSigner, compute_sha256_bytes
+from railos_model import (
+    EvidenceKind, EvidenceStatus, GeoVerdict, ManifestSigner, WorkStep,
+    compute_sha256_bytes,
+)
 
 client = TestClient(app)
+
+
+def given_work_step(step_id: str, task_id: str, *, index: int = 1, video: bool = False) -> WorkStep:
+    """Register the work step this evidence is captured against.
+
+    Work steps are no longer seeded at startup, and finalize refuses evidence
+    whose step it cannot find — the step is the only record of where the
+    capture had to happen.
+    """
+    step = WorkStep(
+        stepId=step_id, taskId=task_id, stepIndex=index,
+        title="Site capture", requiresPhoto=not video, requiresVideo=video,
+        targetLatitude=28.6139, targetLongitude=77.2090, targetRadiusMeters=100.0,
+    )
+    railos_main.state.work_steps[step_id] = step
+    return step
 
 
 def test_auth_login_and_token_rotation():
@@ -73,10 +92,28 @@ def test_admin_supervisor_management():
             "password": "Password@123",
             "role": "SUPERVISOR",
             "assignedSectionCodes": ["SEC_ALJN_KRJ"],
+            "department": "ENGG",
         },
     )
     assert create_res.status_code == 200
     created_sup_id = create_res.json()["userId"]
+    assert create_res.json()["department"] == "ENGG"
+
+    # A supervisor without a department can never file a ticket
+    # (_department_scope returns None -> 403), so the account cannot be
+    # created in that state in the first place.
+    no_department = client.post(
+        "/api/v1/admin/supervisors",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "employeeId": "EMP906",
+            "name": "No Department",
+            "password": "Password@123",
+            "role": "SUPERVISOR",
+            "assignedSectionCodes": ["SEC_ALJN_KRJ"],
+        },
+    )
+    assert no_department.status_code == 422
 
     # Update supervisor assigned areas
     update_res = client.put(
@@ -113,8 +150,18 @@ def test_supervisor_assignments_and_emergency_report():
     tasks = work_res.json()["tasks"]
     assert len(tasks) > 0
     first_task = tasks[0]
-    assert "steps" in first_task
-    assert len(first_task["steps"]) >= 2
+    # Steps are reported as they exist. The endpoint used to invent two of them
+    # per task, at a fixed Delhi coordinate, and persist them as real.
+    assert first_task["steps"] == []
+
+    engg_task = next(t for t in tasks if t["department"] == "ENGG")
+    given_work_step("stp-assign-1", engg_task["taskId"])
+    with_steps = client.get(
+        "/api/v1/work/assignments/mine",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    listed = next(t for t in with_steps.json()["tasks"] if t["taskId"] == engg_task["taskId"])
+    assert [s["stepId"] for s in listed["steps"]] == ["stp-assign-1"]
 
     # Submit emergency report
     emerg_res = client.post(
@@ -144,8 +191,9 @@ def test_evidence_lifecycle_multipart_and_verification():
     token = sup_login.json()["accessToken"]
 
     evidence_id = "018e9999-0000-7000-8000-111122223333"
-    task_id = "TSK-0001"
+    task_id = "ENG-1001"
     step_id = "stp-101"
+    given_work_step(step_id, task_id)
 
     # 1. Create evidence record
     create_res = client.post(
@@ -248,8 +296,9 @@ def test_flagged_evidence_and_control_officer_review():
     token = sup_login.json()["accessToken"]
 
     evidence_id = "018e9999-0000-7000-8000-444455556666"
-    task_id = "TSK-0001"
+    task_id = "ENG-1001"
     step_id = "stp-102"
+    given_work_step(step_id, task_id, index=2)
 
     # Out of radius capture (> 500m away)
     client.post(
@@ -326,17 +375,3 @@ def test_flagged_evidence_and_control_officer_review():
     assert review_res.status_code == 200
     assert review_res.json()["status"] == "ACCEPTED_EXCEPTION"
     assert review_res.json()["reviewerId"] == "admin-01"
-
-
-def test_demo_upload_returns_typed_evidence_and_manifest_envelope():
-    login = client.post("/api/v1/auth/login", json={"employeeId": "EMP901", "password": "Field@123"})
-    assert login.status_code == 200
-    response = client.post(
-        "/api/v1/evidence/demo-upload",
-        headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
-        json={"taskId": "ENG-1001", "stepId": "stp-ENG-1001-1", "kind": "PHOTO", "scenario": "COMPLIANT"},
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["evidence"]["status"] == "VERIFIED"
-    assert body["manifest"]["evidenceId"] == body["evidence"]["evidenceId"]

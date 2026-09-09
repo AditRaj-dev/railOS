@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRailOSStore } from '../store/railosStore';
-import { useAnalyticsSummary, useMaintenanceTasks, useBlockPlans, useNetworkCatalog, useCreateEmergency } from '@/lib/queries';
+import { useAnalyticsSummary, useMaintenanceTasks, useBlockPlans, useNetworkCatalog } from '@/lib/queries';
 import { toDisplayTask, toDisplayBlock, pickActivePlan, buildSectionNameMap } from '@/lib/adapters';
 import { MetricCard, RiskBadge, DepartmentBadge } from './RailwayComponents';
 import {
@@ -32,8 +32,6 @@ export const CommandCenterView: React.FC = () => {
   const catalog = catalogQuery.data;
 
   const { setSelectedTaskId, setSelectedBlockId } = useRailOSStore();
-  const createEmergency = useCreateEmergency();
-  const [emergencyId, setEmergencyId] = useState<string | null>(null);
 
   const sectionNames = useMemo(() => buildSectionNameMap(catalog?.sections || []), [catalog]);
   const tasks = useMemo(() => {
@@ -51,18 +49,6 @@ export const CommandCenterView: React.FC = () => {
 
   const displayCritical = liveAnalytics?.criticalDefects !== undefined ? liveAnalytics.criticalDefects : criticalTasks.length;
   const displayDebt = liveAnalytics?.maintenanceDebt ? `${liveAnalytics.maintenanceDebt} hrs` : `${tasks.length} open`;
-
-  const handleInjectEmergency = () => {
-    createEmergency.mutate(
-      {
-        title: 'USFD ultrasonic crack detection — immediate rail fracture risk',
-        corridorId: 'GZB-ALJN',
-        severity: 'IMR',
-        durationMinutes: 55,
-      },
-      { onSuccess: (data) => setEmergencyId(data.id) }
-    );
-  };
 
   const isPrimaryLoading = tasksQuery.isLoading || plansQuery.isLoading || catalogQuery.isLoading;
   const isPrimaryError = tasksQuery.isError || plansQuery.isError || catalogQuery.isError;
@@ -128,52 +114,6 @@ export const CommandCenterView: React.FC = () => {
           icon={CheckCircle2}
         />
       </div>
-
-      {/* Emergency Injection */}
-      {emergencyId ? (
-        <div
-          className="p-3.5 rounded border flex items-center justify-between animate-pulse"
-          style={{
-            backgroundColor: `var(--status-critical-bg)`,
-            borderColor: `var(--status-critical-border)`,
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5" style={{ color: `var(--status-critical-fg)` }} />
-            <div>
-              <div className="text-sm font-bold font-mono" style={{ color: `var(--status-critical-text)` }}>
-                Emergency recorded — dynamic replanning required
-              </div>
-              <div className="text-xs opacity-80" style={{ color: `var(--status-critical-text)` }}>
-                Recorded against the live API. Open the planner to generate a replan around it.
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => router.push(`/planner?emergencyId=${encodeURIComponent(emergencyId)}`)}
-            className="min-h-11 px-3 py-1.5 text-slate-950 text-xs font-mono font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
-            style={{ backgroundColor: `var(--status-critical-fg)` }}
-          >
-            Open Replanner <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ) : (
-        <div className="p-2.5 rounded border border-slate-800 bg-slate-900/60 flex items-center justify-between text-xs font-mono">
-          <div className="flex items-center gap-2 text-slate-300">
-            <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: `var(--status-ok-fg)` }} />
-            <span className="text-slate-400">EMERGENCY INJECTION:</span>
-            <span>Record a sudden USFD ultrasonic crack detection against the live API to trigger replanning.</span>
-          </div>
-          <button
-            onClick={handleInjectEmergency}
-            disabled={createEmergency.isPending}
-            className="min-h-11 px-2.5 py-1 text-slate-950 rounded text-[11px] font-mono font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
-            style={{ backgroundColor: `var(--status-warning-fg)` }}
-          >
-            <AlertTriangle className="w-3 h-3" /> {createEmergency.isPending ? 'Recording…' : 'Inject Emergency Defect'}
-          </button>
-        </div>
-      )}
 
       {/* Operational Hierarchy */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

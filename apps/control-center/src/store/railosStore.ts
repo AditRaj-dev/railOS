@@ -61,7 +61,7 @@ export const useRailOSStore = create<RailOSStore>((set) => ({
   // Territory Selection
   selectedZone: 'NCR',
   selectedDivision: 'Delhi',
-  selectedSection: 'GZB-ALJN',
+  selectedSection: '',
   setSelectedZone: (zone) => set({ selectedZone: zone }),
   setSelectedDivision: (division) => set({ selectedDivision: division }),
   setSelectedSection: (section) => set({ selectedSection: section }),

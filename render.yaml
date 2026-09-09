@@ -24,8 +24,11 @@ services:
         generateValue: true # Render automatically generates a cryptographically secure 256-bit secret
       - key: RAILOS_CORS_ORIGINS
         value: "https://*.vercel.app,http://localhost:3000" # Allows Vercel frontend domains
-      - key: ENABLE_SYNTHETIC_AUTH
-        value: "true"
+      # Deliberately absent: ENABLE_SYNTHETIC_AUTH. With it on, any caller can
+      # assert `X-RailOS-Role: ADMIN` with no credentials and approve plans,
+      # sign sanctions and drive possessions.
+      - key: RAILOS_EVIDENCE_SIGNING_KEY
+        sync: false # base64 Ed25519 private key; a new key invalidates every prior signature
       # Neon / S3 Object Storage for Field Flaw Photographs & USFD Evidence
       - key: NEON_STORAGE_BUCKET
         sync: false

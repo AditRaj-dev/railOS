@@ -38,66 +38,6 @@
         }
       }
     },
-    "/api/v1/demo/reset": {
-      "post": {
-        "summary": "Reset",
-        "operationId": "reset_api_v1_demo_reset_post",
-        "parameters": [
-          {
-            "name": "X-RailOS-User",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Railos-User"
-            }
-          },
-          {
-            "name": "X-RailOS-Role",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Railos-Role"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/corridors": {
       "get": {
         "summary": "Corridors",

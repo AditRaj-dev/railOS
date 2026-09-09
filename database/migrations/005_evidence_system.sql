@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS users (
   email text UNIQUE,
   phone text,
   role text NOT NULL CHECK (role IN ('SUPERVISOR', 'ADMIN', 'DISPATCHER', 'INSPECTOR')),
+  -- Required for supervisors: _department_scope() has no role-based mapping
+  -- for them, so an account without one can never file or be assigned work.
+  department text CHECK (department IN ('ENGG', 'SNT', 'TRD')),
+  assigned_section_codes text[] NOT NULL DEFAULT '{}',
   password_hash text NOT NULL,
   active boolean NOT NULL DEFAULT true,
   disabled_at timestamptz,

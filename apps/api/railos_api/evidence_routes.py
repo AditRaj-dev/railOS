@@ -47,6 +47,7 @@ from .auth import (
     verify_password,
 )
 from .storage import MemoryObjectStore, get_object_store
+from .user_store import user_store_factory
 from .verification import EvidenceVerificationService
 
 router = APIRouter(tags=["field-evidence"])
@@ -58,79 +59,25 @@ verification_service = EvidenceVerificationService(object_store)
 # In-Memory State for Auth, Assignments, Evidence, and Work Steps
 # -----------------------------------------------------------------------------
 class FieldEvidenceState:
-    """Auth/assignment/demo state. Deliberately in-memory (session-scoped, not
-    durable): work_steps, evidence_items, and upload_sessions live in the
-    Postgres-backed `state` repository from main.py instead (see COLLECTIONS),
-    so evidence media metadata survives a process restart the same way tasks
-    and possessions do."""
+    """Auth/assignment state.
+
+    Users, refresh tokens and section assignments come from `user_store`
+    (the `users` table under postgres, a dict for tests) - they used to be
+    four hardcoded accounts with shipped passwords that reset on restart.
+    Evidence items, work steps and upload sessions live in the Postgres-backed
+    `state` repository from main.py instead (see COLLECTIONS).
+
+    Emergency reports and idempotency keys stay in-process: both are
+    session-scoped and neither is read after a restart.
+    """
 
     def __init__(self):
-        self.users: dict[str, dict[str, Any]] = {}
-        self.refresh_tokens: dict[str, dict[str, Any]] = {}  # token_hash -> token_info
-        self.assignments: dict[str, list[str]] = {}  # user_id -> [section_code, ...]
-        self.emergency_reports: dict[str, EmergencyReport] = {}  # report_id -> EmergencyReport
+        store = user_store_factory()
+        self.users = store.users
+        self.refresh_tokens = store.refresh_tokens
+        self.assignments = store.assignments
+        self.emergency_reports: dict[str, EmergencyReport] = {}
         self.idempotency: dict[str, Any] = {}
-        self._seed()
-
-    def _seed(self):
-        # Default admin account
-        admin_pwd_hash = hash_password("Admin@123")
-        self.users["admin-01"] = {
-            "userId": "admin-01",
-            "employeeId": "EMP001",
-            "name": "Chief Controller",
-            "role": "ADMIN",
-            "passwordHash": admin_pwd_hash,
-            "email": "controller@railos.gov.in",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-
-        # Default field supervisor accounts — one per department (ENGG/SNT/TRD),
-        # matching railos_model.Department, so /work/assignments/mine scopes each
-        # supervisor to their own department's maintenance tasks instead of every
-        # department's. All three share the demo password for convenience.
-        sup_pwd_hash = hash_password("Field@123")
-        corridor_sections = ["SEC_GZB_DER", "SEC_DER_KRJ", "SEC_KRJ_SMQ", "SEC_SMQ_ALJN"]
-        self.users["sup-01"] = {
-            "userId": "sup-01",
-            "employeeId": "EMP901",
-            "name": "Rajesh Kumar (SSE/P-Way)",
-            "role": "SUPERVISOR",
-            "department": "ENGG",
-            "passwordHash": sup_pwd_hash,
-            "email": "rajesh.kumar@railos.gov.in",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-        self.assignments["sup-01"] = corridor_sections
-        self.users["sup-02"] = {
-            "userId": "sup-02",
-            "employeeId": "EMP902",
-            "name": "Meena Iyer (SSE/Signal)",
-            "role": "SUPERVISOR",
-            "department": "SNT",
-            "passwordHash": sup_pwd_hash,
-            "email": "meena.iyer@railos.gov.in",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-        self.assignments["sup-02"] = corridor_sections
-        self.users["sup-03"] = {
-            "userId": "sup-03",
-            "employeeId": "EMP903",
-            "name": "Arjun Nair (SSE/TRD)",
-            "role": "SUPERVISOR",
-            "department": "TRD",
-            "passwordHash": sup_pwd_hash,
-            "email": "arjun.nair@railos.gov.in",
-            "active": True,
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-        self.assignments["sup-03"] = corridor_sections
-        # Demo work steps for TSK-0001 are seeded by the Postgres-backed
-        # `state` repository (see Repository._seed in main.py) so they persist
-        # across restarts alongside evidence_items and upload_sessions.
 
 
 evidence_state = FieldEvidenceState()
@@ -141,6 +88,12 @@ def _authorize_evidence(item: EvidenceItem, user: UserAccount) -> None:
     role = str(user.role).upper()
     if role not in {"ADMIN", "CONTROL_OFFICER", "MANAGEMENT"} and item.supervisorId != user.user_id:
         raise HTTPException(403, {"code": "EVIDENCE_FORBIDDEN", "message": "You are not assigned to this evidence item"})
+
+
+def _section_for_task(state, task_id: str) -> str | None:
+    """The task's own section. Evidence used to be stamped SEC_KRJ_SMQ."""
+    task = state.tasks.get(task_id)
+    return getattr(task, "sectionId", None) if task else None
 
 
 def _steps_for_task(state, task_id: str) -> list[WorkStep]:
@@ -244,6 +197,7 @@ def login(req: LoginRequest):
         role=user["role"],
         employeeId=user["employeeId"],
         name=user["name"],
+        department=user.get("department"),
     )
 
 
@@ -280,6 +234,7 @@ def refresh_token_endpoint(req: RefreshRequest):
         role=user["role"],
         employeeId=user["employeeId"],
         name=user["name"],
+        department=user.get("department"),
     )
 
 
@@ -336,7 +291,12 @@ def create_supervisor(
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     evidence_state.assignments[user_id] = list(req.assigned_section_codes)
-    return {"userId": user_id, "employeeId": req.employee_id, "name": req.name}
+    return {
+        "userId": user_id,
+        "employeeId": req.employee_id,
+        "name": req.name,
+        "department": req.department,
+    }
 
 
 @router.put("/api/v1/admin/supervisors/{supervisor_id}/areas")
@@ -397,35 +357,9 @@ def get_my_assignments(
         task_id = task_data.get("taskId")
         steps = _steps_for_task(state, task_id)
 
-        # Default fallback steps if none explicitly assigned
-        if not steps:
-            steps = [
-                WorkStep(
-                    stepId=f"stp-{task_id}-1",
-                    taskId=task_id,
-                    stepIndex=1,
-                    title="Live Pre-Execution Safety & Site Photo",
-                    requiresPhoto=True,
-                    targetLatitude=28.6139,
-                    targetLongitude=77.2090,
-                    targetRadiusMeters=100.0,
-                ),
-                WorkStep(
-                    stepId=f"stp-{task_id}-2",
-                    taskId=task_id,
-                    stepIndex=2,
-                    title="Final Completion & Line Clearance Video (<=90s)",
-                    requiresPhoto=False,
-                    requiresVideo=True,
-                    targetLatitude=28.6139,
-                    targetLongitude=77.2090,
-                    targetRadiusMeters=100.0,
-                ),
-            ]
-            with state.transaction():
-                for step in steps:
-                    state.work_steps[step.stepId] = step
-
+        # A task with no work steps has none. Inventing two — with a fixed
+        # Delhi coordinate — meant evidence was verified against a location
+        # nobody surveyed, and the invented steps were then persisted as real.
         task_data["steps"] = [s.model_dump(by_alias=True, mode="json") for s in steps]
         task_data["executionStatus"] = "IN_PROGRESS" if any(s.status != WorkExecutionStatus.READY for s in steps) else "READY"
         tasks.append(task_data)
@@ -437,6 +371,76 @@ def get_my_assignments(
         "count": len(tasks),
         "asOfUtc": datetime.now(timezone.utc).isoformat(),
     }
+
+
+class WorkStepInput(AuthDTO):
+    """One step of a task's work plan, and where its evidence must be captured."""
+
+    step_id: str | None = None
+    title: str = Field(min_length=1)
+    description: str = ""
+    requires_photo: bool = True
+    requires_video: bool = False
+    target_latitude: float = Field(ge=-90, le=90)
+    target_longitude: float = Field(ge=-180, le=180)
+    target_radius_meters: float = Field(default=100.0, gt=0)
+
+
+class DefineWorkStepsRequest(AuthDTO):
+    steps: list[WorkStepInput] = Field(min_length=1)
+
+
+@router.put("/api/v1/tasks/{task_id}/steps")
+def define_work_steps(
+    task_id: str,
+    req: DefineWorkStepsRequest,
+    current_user: UserAccount = Depends(require_role("ADMIN", "CONTROL_OFFICER", "PLANNER")),
+):
+    """Define the work steps for a task.
+
+    Nothing could create these before: the assignments endpoint invented two
+    per task at a fixed coordinate and persisted them, so every task appeared
+    to have a surveyed capture location it had never been given. Evidence
+    verification refuses a step it cannot find, so this is where the location
+    an inspector is held to actually comes from.
+    """
+    from .main import state
+
+    task = state.tasks.get(task_id)
+    if task is None:
+        raise HTTPException(404, {"code": "TASK_NOT_FOUND", "message": "task does not exist"})
+
+    steps = [
+        WorkStep(
+            stepId=item.step_id or f"stp-{task_id}-{index}",
+            taskId=task_id,
+            stepIndex=index,
+            title=item.title,
+            description=item.description,
+            requiresPhoto=item.requires_photo,
+            requiresVideo=item.requires_video,
+            targetLatitude=item.target_latitude,
+            targetLongitude=item.target_longitude,
+            targetRadiusMeters=item.target_radius_meters,
+        )
+        for index, item in enumerate(req.steps, start=1)
+    ]
+    step_ids = [step.stepId for step in steps]
+    if len(set(step_ids)) != len(step_ids):
+        raise HTTPException(422, {"code": "DUPLICATE_STEP_ID", "message": "step ids must be unique", "details": {"field": "steps"}})
+
+    with state.transaction():
+        for existing in [s for s in state.work_steps.values() if s.taskId == task_id]:
+            del state.work_steps[existing.stepId]
+        for step in steps:
+            state.work_steps[step.stepId] = step
+        state.emit(
+            "TASK_STEPS_DEFINED", task_id,
+            {"taskId": task_id, "stepIds": step_ids},
+            actor=current_user.user_id,
+        )
+
+    return {"taskId": task_id, "steps": [s.model_dump(by_alias=True, mode="json") for s in steps], "count": len(steps)}
 
 
 @router.post("/api/v1/emergency-reports")
@@ -659,18 +663,27 @@ def finalize_evidence(
         raise HTTPException(404, {"code": "EVIDENCE_NOT_FOUND", "message": "Evidence record not found"})
     _authorize_evidence(item, current_user)
 
-    # Find step target
-    target_lat = 28.6139
-    target_lon = 77.2090
-    target_radius = 100.0
-    section_code = "SEC_KRJ_SMQ"
-
+    # The work step is the only authority on where this evidence had to be
+    # captured. Falling back to a fixed coordinate meant evidence was verified
+    # against a point in Delhi and signed as if that had been checked.
     steps = _steps_for_task(state, item.taskId)
     target_step = next((s for s in steps if s.stepId == item.stepId), None)
-    if target_step:
-        target_lat = target_step.targetLatitude
-        target_lon = target_step.targetLongitude
-        target_radius = target_step.targetRadiusMeters
+    if target_step is None:
+        raise HTTPException(422, {
+            "code": "WORK_STEP_REQUIRED",
+            "message": "evidence cannot be verified without the work step that defines its capture location",
+            "details": {"field": "stepId", "taskId": item.taskId, "stepId": item.stepId},
+        })
+    target_lat = target_step.targetLatitude
+    target_lon = target_step.targetLongitude
+    target_radius = target_step.targetRadiusMeters
+    section_code = _section_for_task(state, item.taskId)
+    if not section_code:
+        raise HTTPException(422, {
+            "code": "TASK_SECTION_REQUIRED",
+            "message": "evidence cannot be signed without the task's section",
+            "details": {"field": "taskId", "taskId": item.taskId},
+        })
 
     verified_item, signed_manifest = verification_service.verify_evidence(
         item=item,
@@ -711,8 +724,15 @@ def finalize_evidence(
 
 
 @router.get("/api/v1/evidence/preview-media")
-def preview_media(key: str = Query(...)):
-    """Serve local object bytes before the dynamic evidence-detail route."""
+def preview_media(
+    key: str = Query(...),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Serve local object bytes before the dynamic evidence-detail route.
+
+    Authenticated: this streams field evidence media, and anyone holding a
+    storage key could previously download it with no credentials at all.
+    """
     if isinstance(object_store, MemoryObjectStore):
         try:
             return Response(content=object_store.get_object_bytes(key),
@@ -812,158 +832,3 @@ def review_flagged_evidence(
         )
 
     return item.model_dump(by_alias=True, mode="json")
-
-
-class DemoEvidenceUploadRequest(AuthDTO):
-    task_id: str = "ENG-1001"
-    step_id: str | None = None
-    kind: EvidenceKind = EvidenceKind.PHOTO
-    scenario: Literal["COMPLIANT", "FLAGGED_GPS", "FLAGGED_ACCURACY"] = "COMPLIANT"
-    exception_reason: str | None = None
-    media_base64: str | None = None
-
-
-@router.post("/api/v1/evidence/demo-upload")
-def demo_upload_evidence(
-    req: DemoEvidenceUploadRequest,
-    current_user: UserAccount = Depends(get_current_user),
-):
-    """Simulate a complete field capture, multipart upload, and verification cycle.
-
-    Enables instant field upload demonstration from the web control center or CLI.
-    """
-    from .main import state
-    from .demo_seed import SAMPLE_JPEG_TRACK, SAMPLE_MP4_WALKTHROUGH
-
-    task = state.tasks.get(req.task_id)
-    if not task:
-        raise HTTPException(404, {"code": "TASK_NOT_FOUND", "message": f"Task {req.task_id} not found"})
-
-    steps = _steps_for_task(state, req.task_id)
-    target_step = next((s for s in steps if s.stepId == req.step_id), None) if req.step_id else (steps[0] if steps else None)
-
-    if not target_step:
-        target_step = WorkStep(
-            stepId=f"stp-{req.task_id}-demo",
-            taskId=req.task_id,
-            stepIndex=1,
-            title="Live Field Execution & Clearance Proof",
-            description="Geotagged photographic verification of task completion.",
-            requiresPhoto=req.kind == EvidenceKind.PHOTO,
-            requiresVideo=req.kind == EvidenceKind.VIDEO,
-            targetLatitude=28.6140,
-            targetLongitude=77.5030,
-            targetRadiusMeters=100.0,
-            status=WorkExecutionStatus.READY,
-        )
-        with state.transaction():
-            state.work_steps[target_step.stepId] = target_step
-
-    target_lat = target_step.targetLatitude
-    target_lon = target_step.targetLongitude
-    target_radius = target_step.targetRadiusMeters
-
-    scenario_upper = req.scenario.upper()
-    if scenario_upper == "FLAGGED_GPS":
-        # ~147m distance: outside 100m radius
-        start_lat = target_lat + 0.0011
-        start_lon = target_lon + 0.0009
-        gps_accuracy = 12.0
-        reason = req.exception_reason or "Track obstruction or terrain prevented closer standoff; photo captured from authorized access path."
-    elif scenario_upper == "FLAGGED_ACCURACY":
-        start_lat = target_lat + 0.00003
-        start_lon = target_lon + 0.00003
-        gps_accuracy = 65.0  # > 50m limit
-        reason = req.exception_reason or "Dense tree canopy degraded GPS satellite geometry (accuracy 65m > 50m threshold)."
-    else:  # COMPLIANT
-        start_lat = target_lat + 0.00004
-        start_lon = target_lon + 0.00004
-        gps_accuracy = 6.0
-        reason = req.exception_reason
-
-    # Resolve media bytes
-    if req.media_base64 is not None:
-        try:
-            media_bytes = base64.b64decode(req.media_base64, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise HTTPException(400, {"code": "INVALID_IMAGE_DATA", "message": "Failed to decode base64 media payload"}) from exc
-    elif req.kind == EvidenceKind.VIDEO:
-        media_bytes = SAMPLE_MP4_WALKTHROUGH
-    else:
-        media_bytes = SAMPLE_JPEG_TRACK
-
-    valid_media = (media_bytes.startswith(b"\xff\xd8\xff") if req.kind == EvidenceKind.PHOTO
-                   else b"ftyp" in media_bytes[:32])
-    if not valid_media:
-        raise HTTPException(422, {"code": "INVALID_MEDIA_FORMAT", "message": "Choose a JPEG photo or MP4 video matching the evidence kind"})
-
-    content_type = "video/mp4" if req.kind == EvidenceKind.VIDEO else "image/jpeg"
-    sha256_hash = compute_sha256_bytes(media_bytes)
-    evidence_id = f"018e{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:4]}-7000-8000-{uuid.uuid4().hex[:12]}"
-    storage_key = f"evidence/{req.task_id}/{target_step.stepId}/{evidence_id}/proof"
-
-    # Store media in object store
-    try:
-        object_store.put_object_bytes(storage_key, media_bytes, content_type)
-    except Exception as exc:
-        raise HTTPException(500, {"code": "STORAGE_ERROR", "message": f"Failed to store media: {exc}"}) from exc
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    raw_item = EvidenceItem(
-        evidenceId=evidence_id,
-        taskId=req.task_id,
-        stepId=target_step.stepId,
-        supervisorId=current_user.user_id,
-        kind=req.kind,
-        status=EvidenceStatus.UPLOADING,
-        originalStorageKey=storage_key,
-        proofStorageKey=storage_key,
-        originalSha256=sha256_hash,
-        proofSha256=sha256_hash,
-        originalSizeBytes=len(media_bytes),
-        proofSizeBytes=len(media_bytes),
-        captureTimeUtc=now_iso,
-        startLatitude=start_lat,
-        startLongitude=start_lon,
-        gpsAccuracyMeters=gps_accuracy,
-        geoVerdict=GeoVerdict.WITHIN_RADIUS,
-        exceptionReason=reason,
-        createdTimeUtc=now_iso,
-        updatedTimeUtc=now_iso,
-    )
-
-    # Run verification pipeline
-    verified_item, _ = verification_service.verify_evidence(
-        item=raw_item,
-        target_lat=target_lat,
-        target_lon=target_lon,
-        target_radius_m=target_radius,
-        section_code=task.sectionId or "SEC_GZB_DER",
-    )
-
-    with state.transaction():
-        state.evidence_items[evidence_id] = verified_item
-        if verified_item.status == EvidenceStatus.VERIFIED:
-            target_step.status = WorkExecutionStatus.COMPLETED
-            target_step.evidenceId = evidence_id
-            state.emit(
-                "TASK_STEP_COMPLETED",
-                target_step.stepId,
-                target_step.model_dump(by_alias=True, mode="json"),
-                actor=current_user.user_id,
-            )
-        elif verified_item.status == EvidenceStatus.FLAGGED_REVIEW:
-            target_step.status = WorkExecutionStatus.COMPLETED_PENDING_EVIDENCE
-            target_step.evidenceId = evidence_id
-            state.emit(
-                "EVIDENCE_FLAGGED",
-                evidence_id,
-                verified_item.model_dump(by_alias=True, mode="json"),
-                actor=current_user.user_id,
-                reason=verified_item.reviewNotes or "Geospatial discrepancy detected",
-            )
-
-    res = verified_item.model_dump(by_alias=True, mode="json")
-    res["proofDownloadUrl"] = object_store.generate_presigned_download_url(storage_key)
-    return {"evidence": res, "manifest": verified_item.canonicalManifest.model_dump(by_alias=True, mode="json")}
-

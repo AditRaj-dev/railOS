@@ -141,6 +141,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           role: result.role,
           employeeId: result.employeeId,
           name: result.name,
+          department: result.department,
         };
         applySession(session);
         set({ session, status: 'authenticated', error: null });
@@ -189,6 +190,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
           role: result.role,
           employeeId: result.employeeId,
           name: result.name,
+          department: result.department,
         };
         applySession(session);
         set({ session, status: 'authenticated', error: null });

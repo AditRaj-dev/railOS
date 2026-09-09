@@ -16,9 +16,21 @@ describe('useReportSimulation', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-08T12:00:00Z')); });
   afterEach(() => vi.useRealTimers());
 
-  it('generates reports over time and pauses cleanly', () => {
+  it('invents nothing until an operator starts it', () => {
+    // These reports are simulated. The digital twin shows them beside real
+    // network geometry, so they must never appear unasked.
     const { result } = renderHook(
       () => useReportSimulation([segment], { seed: 42, spawnIntervalMs: 2_000 }),
+      { wrapper: StrictMode }
+    );
+    expect(result.current.running).toBe(false);
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current.reports).toHaveLength(0);
+  });
+
+  it('generates reports over time and pauses cleanly', () => {
+    const { result } = renderHook(
+      () => useReportSimulation([segment], { seed: 42, spawnIntervalMs: 2_000, autoStart: true }),
       { wrapper: StrictMode }
     );
     act(() => vi.advanceTimersByTime(2_000));
@@ -29,7 +41,7 @@ describe('useReportSimulation', () => {
   });
 
   it('reset reproduces the first report', () => {
-    const { result } = renderHook(() => useReportSimulation([segment], { seed: 42, spawnIntervalMs: 2_000 }));
+    const { result } = renderHook(() => useReportSimulation([segment], { seed: 42, spawnIntervalMs: 2_000, autoStart: true }));
     act(() => vi.advanceTimersByTime(2_000));
     const coordinates = result.current.reports[0].coordinates;
     act(() => result.current.reset());
