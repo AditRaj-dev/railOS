@@ -322,8 +322,23 @@ export function TicketComposer({ initialDepartment, lockedDepartment, onSubmitte
           <span className="rounded border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)]">Step {stepIndex + 1} of {STEPS.length}</span>
         </div>
 
-        <ol className="mt-4 grid grid-cols-3 gap-2 text-xs sm:grid-cols-6" aria-label="Ticket progress">
-          {STEPS.map((item, index) => <li key={item.id} aria-current={index === stepIndex ? 'step' : undefined} className={`rounded border px-2 py-2 font-mono ${index === stepIndex ? 'border-[var(--accent)] bg-[var(--status-caution-bg)] text-[var(--status-caution-text)]' : index < stepIndex ? 'border-[var(--status-ok-border)] text-[var(--status-ok-text)]' : 'border-[var(--border-subtle)] text-[var(--text-muted)]'}`}>{index + 1}. {item.label}</li>)}
+        <ol className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs" aria-label="Ticket progress">
+          {STEPS.map((item, index) => (
+            <li
+              key={item.id}
+              aria-current={index === stepIndex ? 'step' : undefined}
+              className={`flex items-center gap-1.5 rounded-md border px-3 py-2.5 font-mono text-xs font-medium transition-colors shadow-xs ${
+                index === stepIndex
+                  ? 'border-[var(--accent)] bg-[var(--status-caution-bg)] text-[var(--status-caution-text)] shadow-sm'
+                  : index < stepIndex
+                    ? 'border-[var(--status-ok-border)] bg-[var(--status-ok-bg)]/30 text-[var(--status-ok-text)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)]/40 text-[var(--text-muted)]'
+              }`}
+            >
+              <span className="shrink-0 font-bold">{index + 1}.</span>
+              <span className="truncate">{item.label}</span>
+            </li>
+          ))}
         </ol>
 
         {errorMessages.length > 0 && <div ref={errorSummaryRef} tabIndex={-1} className="mt-4 rounded border border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] p-3 text-sm text-[var(--status-critical-text)]" role="alert"><div className="flex items-center gap-2 font-semibold"><CircleAlert className="h-4 w-4" aria-hidden="true" /> Correct the highlighted fields</div><ul className="mt-2 list-disc space-y-1 pl-5">{errorMessages.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}</ul></div>}
