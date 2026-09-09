@@ -235,6 +235,15 @@ export function useTrains(): UseQueryResult<unknown[], api.RailOSApiError> {
 // Department ticket queries
 // ============================================================================
 
+/** Asset inventory; static for the scenario's lifetime. */
+export function useAssets(): UseQueryResult<api.AssetSummary[], api.RailOSApiError> {
+  return useQuery({
+    queryKey: ['assets'] as const,
+    queryFn: () => api.fetchAssets(),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
 /** Task types and their statutory duration floors; effectively static. */
 export function useTicketTaskTypes(): UseQueryResult<api.TicketTaskType[], api.RailOSApiError> {
   return useQuery({

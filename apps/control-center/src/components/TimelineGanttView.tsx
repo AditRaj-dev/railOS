@@ -205,8 +205,14 @@ export const TimelineGanttView: React.FC = () => {
                 const left = getOffsetPct(b.startTime);
                 const width = getDurationPct(b.durationMinutes);
                 return (
-                  <div
+                  // A real button, not a clickable div (DP-002): the bar is
+                  // keyboard reachable, announces itself, and carries the whole
+                  // window in its accessible name because the visible label is
+                  // clipped to the bar's width.
+                  <button
                     key={b.id}
+                    type="button"
+                    aria-label={`Possession ${b.blockCode}, ${b.sectionName}, ${b.startTime} to ${b.endTime}, ${b.durationMinutes} minutes. Open in Block Opportunity Planner.`}
                     onClick={() => {
                       setSelectedBlockId(b.id);
                       router.push('/planner');
@@ -217,20 +223,20 @@ export const TimelineGanttView: React.FC = () => {
                       backgroundColor: `var(--status-ok-bg)`,
                       borderColor: `var(--status-ok-fg)`,
                     }}
-                    className="absolute top-1.5 bottom-1.5 rounded border cursor-pointer p-2 flex flex-col justify-between transition-all"
+                    className="absolute top-1.5 bottom-1.5 rounded border p-2 flex flex-col justify-between text-left transition-all hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
                   >
-                    <div className="flex items-center justify-between text-[10px] font-mono font-bold" style={{ color: `var(--status-ok-text)` }}>
+                    <span className="flex items-center justify-between text-[10px] font-mono font-bold" style={{ color: `var(--status-ok-text)` }}>
                       <span>{b.blockCode}</span>
                       <span>{b.durationMinutes}m</span>
-                    </div>
-                    <div className="flex items-center gap-1">
+                    </span>
+                    <span className="flex items-center gap-1">
                       {b.departments.map((d, i) => (
                         <span key={`${d}-${i}`} className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-900 text-slate-300">
                           {d}
                         </span>
                       ))}
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                 );
               })}
             </div>

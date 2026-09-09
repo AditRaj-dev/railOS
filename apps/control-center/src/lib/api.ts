@@ -152,6 +152,8 @@ export interface CreateBlockRequestPayload {
   severity: number;
   estimatedDuration: number;
   blockType: string;
+  /** Set when the section holds more than one candidate asset for the task type. */
+  assetId?: string;
   /** Integer minutes relative to the scenario horizon start, per BlockRequestCreate (extra="forbid"). */
   requestedStart: number;
   requestedEnd: number;
@@ -659,9 +661,26 @@ export interface TicketTaskType {
   taskType: string;
   department: DepartmentCode;
   minDurationMinutes: number;
+  assetType: string;
   requiresPTW: boolean;
   requiresT351: boolean;
   requiresCorrespondenceTest: boolean;
+}
+
+export interface AssetSummary {
+  assetId: string;
+  assetType: string;
+  sectionId: string;
+  track?: string | null;
+  kmStart?: number | null;
+  kmEnd?: number | null;
+  name?: string | null;
+}
+
+/** Asset inventory; the composer filters it to the work location's candidates. */
+export async function fetchAssets(): Promise<AssetSummary[]> {
+  const data = await fetchApi<{ items?: AssetSummary[] }>('/api/v1/assets');
+  return data.items || [];
 }
 
 /** Per-department task types plus their HC-002 duration floors, server-owned. */

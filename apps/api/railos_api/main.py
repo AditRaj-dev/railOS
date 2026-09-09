@@ -849,6 +849,9 @@ def _task_type_view(department: Department, task_type: TaskType) -> dict[str, An
         "taskType": task_type.value,
         "department": department.value,
         "minDurationMinutes": _task_type_min_duration(task_type),
+        # Which asset identifies the work location for this task type, so the
+        # composer can offer the right ones instead of hitting ASSET_REQUIRED.
+        "assetType": TASK_ASSET_TYPES.get(task_type, "TRACK_SECTION"),
         "requiresPTW": bool(requirements.get("requiresPTW", False)),
         "requiresT351": bool(requirements.get("requiresT351", False)),
         "requiresCorrespondenceTest": bool(requirements.get("requiresCorrespondenceTest", False)),

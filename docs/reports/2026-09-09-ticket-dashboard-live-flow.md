@@ -16,7 +16,7 @@ cd E:\RailOS\apps\control-center && npm run dev
 | Leg | Result |
 |---|---|
 | `pytest -q` | 156 passed (includes `test_e2e_ticket_api.py` 8 cases and `test_e2e_ticket_to_evidence.py`) |
-| Frontend typecheck / lint / vitest / build | clean · 0 errors, 10 pre-existing unused-var warnings · 88 tests · build OK |
+| Frontend typecheck / lint / vitest / build | clean · 0 errors, 10 pre-existing unused-var warnings · 92 tests · build OK |
 | ENGG ticket via composer | created, queued, linked task `TKT-REQ-31D468B3AD`, Block Finder "Ready" |
 | SNT ticket (acting role Signal & Telecom) | `REQ-C276EF0EA5` · POINT MACHINE MAINT · queue updated live without reload |
 | TRD ticket (acting role Traction) | `REQ-526CDE128E` · OHE INSPECTION · linked task appears in optimizer warnings (HC-012 tower wagon) |
@@ -49,9 +49,14 @@ Tests added: `tests/test_e2e_ticket_api.py` covers the task-type catalogue and t
 
 ## Gaps still open
 
-- Clickable `<div>` possession bars on the Gantt (DP-002) are unchanged.
-- SNT point-machine work still needs an explicit asset (`ASSET_REQUIRED`) with no picker in the composer; the API lists candidate asset ids but the composer does not offer them.
 - No CI browser proof; plan task 8 stays open as design debt.
+
+## Second pass: Gantt semantics and the asset picker
+
+9. **Gantt possession bars are buttons (DP-002)** — each bar is a `<button type="button">` with a focus-visible ring and an accessible name carrying the whole window ("Possession BLK-ER_KRJ-00000, Dadri–Khurja, 00:00 to 02:30, 150 minutes. Open in Block Opportunity Planner."), because the visible label is clipped to the bar's width. Verified in the live app: the bars expose the button role with those names, take focus, and activate to `/planner`. Keyboard activation itself could not be exercised through the automation — the browser pane delivers no key events to the page at all (a window-level `keydown` listener recorded nothing), so that leg rests on native button behaviour plus the component spec rather than an observed keystroke.
+10. **SNT asset picker** — `/api/v1/block-requests/task-types` now also reports the `assetType` that identifies each task type's work location, and the composer's work step offers the matching assets for the chosen section and track. One candidate is named and left to the server to resolve; several require a choice; none is refused up front — "No POINT asset is mapped on SEC_KRJ_SMQ DOWN. Choose another section, track, or work type." — instead of `ASSET_REQUIRED` after six steps. Changing section, track or work type clears a stale choice. Verified live: point-machine work on SEC_KRJ_SMQ DOWN is caught at the work step, and the same request on UP resolves to `POINT_102B_KRJ` and submits (`REQ-063CAF789A`).
+
+Tests: `TimelineGanttView.test.tsx` asserts the bar's button role and accessible name and the REQUESTED wording; `TicketComposer.test.tsx` covers the multi-candidate choice and the lone-candidate pass-through; `test_e2e_ticket_api.py` asserts the `assetType` in the catalogue.
 
 ## Limitations
 

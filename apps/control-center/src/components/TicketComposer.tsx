@@ -4,7 +4,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, ClipboardCheck, MessageSquareText, RotateCcw } from 'lucide-react';
 import type { BlockRequest, CreateBlockRequestPayload, DepartmentCode, RailOSApiError } from '@/lib/api';
-import { useCreateBlockRequest, useNetworkCatalog, useTicketTaskTypes } from '@/lib/queries';
+import { useAssets, useCreateBlockRequest, useNetworkCatalog, useTicketTaskTypes } from '@/lib/queries';
 import { DEMO_EPOCH_ISO, dateToMinute } from '@/lib/time';
 
 type ComposerStep = 'department' | 'location' | 'work' | 'block' | 'window' | 'review';
@@ -16,6 +16,7 @@ interface TicketDraft {
   kmStart: string;
   kmEnd: string;
   taskType: string;
+  assetId: string;
   severity: string;
   estimatedDuration: string;
   blockType: string;
@@ -52,6 +53,7 @@ function initialDraft(department?: DepartmentCode): TicketDraft {
     kmStart: '',
     kmEnd: '',
     taskType: '',
+    assetId: '',
     severity: '5',
     estimatedDuration: '',
     blockType: 'TRAFFIC',
@@ -74,6 +76,7 @@ function createPayload(draft: TicketDraft): CreateBlockRequestPayload {
     kmStart: Number(draft.kmStart),
     kmEnd: Number(draft.kmEnd),
     taskType: draft.taskType,
+    ...(draft.assetId ? { assetId: draft.assetId } : {}),
     severity: Number(draft.severity),
     estimatedDuration: Number(draft.estimatedDuration),
     blockType: draft.blockType,
@@ -103,6 +106,7 @@ const FIELD_STEPS: Record<string, ComposerStep> = {
   kmStart: 'location',
   kmEnd: 'location',
   taskType: 'work',
+  assetId: 'work',
   severity: 'work',
   estimatedDuration: 'block',
   blockType: 'block',
@@ -143,7 +147,21 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
   const taskTypes = serverTaskTypes.length
     ? serverTaskTypes.map((entry) => entry.taskType)
     : draft.department ? TASK_TYPES[draft.department] : [];
-  const minDuration = serverTaskTypes.find((entry) => entry.taskType === draft.taskType)?.minDurationMinutes ?? 0;
+  const selectedTaskType = serverTaskTypes.find((entry) => entry.taskType === draft.taskType);
+  const minDuration = selectedTaskType?.minDurationMinutes ?? 0;
+  const assetsQuery = useAssets();
+  // Point machines, axle counters and OHE elementary sections each identify the
+  // work location by their own asset, and a section can hold several. The API
+  // auto-resolves only when exactly one candidate matches, so offer the list
+  // rather than letting the operator meet ASSET_REQUIRED after six steps.
+  const candidateAssets = useMemo(() => {
+    if (!selectedTaskType || !draft.sectionId) return [];
+    return (assetsQuery.data || []).filter((asset) =>
+      asset.sectionId === draft.sectionId
+      && asset.assetType === selectedTaskType.assetType
+      && (asset.track == null || asset.track === draft.track));
+  }, [assetsQuery.data, selectedTaskType, draft.sectionId, draft.track]);
+  const assetChoiceRequired = Boolean(selectedTaskType) && candidateAssets.length !== 1;
   const sections = useMemo(() => catalogQuery.data?.sections || [], [catalogQuery.data]);
 
   const update = <Key extends keyof TicketDraft>(key: Key, value: TicketDraft[Key]) => {
@@ -170,6 +188,13 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
     if (target === 'work') {
       if (!draft.taskType) errors.taskType = 'Choose the work type.';
       if (!draft.severity || Number(draft.severity) < 1 || Number(draft.severity) > 10) errors.severity = 'Choose a severity from 1 to 10.';
+      if (draft.taskType && assetChoiceRequired) {
+        if (candidateAssets.length === 0) {
+          errors.assetId = `No ${pretty(selectedTaskType?.assetType)} asset is mapped on ${draft.sectionId || 'this section'} ${draft.track}. Choose another section, track, or work type.`;
+        } else if (!draft.assetId) {
+          errors.assetId = `Choose which ${pretty(selectedTaskType?.assetType)} this request covers.`;
+        }
+      }
     }
     if (target === 'block') {
       if (!draft.estimatedDuration || Number(draft.estimatedDuration) <= 0) errors.estimatedDuration = 'Enter a duration greater than zero minutes.';
@@ -284,9 +309,9 @@ export function TicketComposer({ initialDepartment, onSubmitted }: TicketCompose
 
             {step.id === 'department' && <div className="mt-4 grid gap-3 md:grid-cols-3">{DEPARTMENTS.map((department) => <label key={department.code} className={`cursor-pointer rounded border p-3 ${draft.department === department.code ? 'border-[var(--accent)] bg-[var(--status-caution-bg)]' : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]'}`}><input className="mr-2" type="radio" name="department" value={department.code} checked={draft.department === department.code} onChange={() => { update('department', department.code); update('taskType', ''); }} /> <span className="font-mono text-sm font-bold text-[var(--text-primary)]">{department.label}</span><span className="mt-2 block text-xs text-[var(--text-secondary)]">{department.description}</span></label>)}</div>}
 
-            {step.id === 'location' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Affected section" error={fieldErrors.sectionId}><select value={draft.sectionId} onChange={(event) => update('sectionId', event.target.value)} aria-describedby={fieldErrors.sectionId ? 'sectionId-error' : undefined}><option value="">Choose section</option>{sections.map((section) => <option key={section.sectionId} value={section.sectionId}>{section.name} ({section.sectionId})</option>)}</select>{catalogQuery.isLoading && <p className="mt-1 text-xs text-[var(--text-muted)]" role="status">Loading section catalogue…</p>}</Field><Field label="Track" error={fieldErrors.track}><select value={draft.track} onChange={(event) => update('track', event.target.value)}><option value="DOWN">Down</option><option value="UP">Up</option><option value="THIRD">Third</option><option value="SINGLE">Single</option></select></Field><Field label="Start kilometre" error={fieldErrors.kmStart}><input type="number" step="0.001" value={draft.kmStart} onChange={(event) => update('kmStart', event.target.value)} /></Field><Field label="End kilometre" error={fieldErrors.kmEnd}><input type="number" step="0.001" value={draft.kmEnd} onChange={(event) => update('kmEnd', event.target.value)} /></Field></div>}
+            {step.id === 'location' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Affected section" error={fieldErrors.sectionId}><select value={draft.sectionId} onChange={(event) => { update('sectionId', event.target.value); update('assetId', ''); }} aria-describedby={fieldErrors.sectionId ? 'sectionId-error' : undefined}><option value="">Choose section</option>{sections.map((section) => <option key={section.sectionId} value={section.sectionId}>{section.name} ({section.sectionId})</option>)}</select>{catalogQuery.isLoading && <p className="mt-1 text-xs text-[var(--text-muted)]" role="status">Loading section catalogue…</p>}</Field><Field label="Track" error={fieldErrors.track}><select value={draft.track} onChange={(event) => { update('track', event.target.value); update('assetId', ''); }}><option value="DOWN">Down</option><option value="UP">Up</option><option value="THIRD">Third</option><option value="SINGLE">Single</option></select></Field><Field label="Start kilometre" error={fieldErrors.kmStart}><input type="number" step="0.001" value={draft.kmStart} onChange={(event) => update('kmStart', event.target.value)} /></Field><Field label="End kilometre" error={fieldErrors.kmEnd}><input type="number" step="0.001" value={draft.kmEnd} onChange={(event) => update('kmEnd', event.target.value)} /></Field></div>}
 
-            {step.id === 'work' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Work type" error={fieldErrors.taskType}><select value={draft.taskType} onChange={(event) => update('taskType', event.target.value)} disabled={!draft.department}><option value="">Choose work type</option>{taskTypes.map((type) => <option key={type} value={type}>{pretty(type)}</option>)}</select></Field><Field label="Severity (1 lowest · 10 highest)" error={fieldErrors.severity}><select value={draft.severity} onChange={(event) => update('severity', event.target.value)}>{Array.from({ length: 10 }, (_, index) => index + 1).map((level) => <option key={level} value={level}>{level}{level >= 9 ? ' · critical' : level >= 7 ? ' · high' : level >= 4 ? ' · medium' : ' · low'}</option>)}</select></Field></div>}
+            {step.id === 'work' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Work type" error={fieldErrors.taskType}><select value={draft.taskType} onChange={(event) => { update('taskType', event.target.value); update('assetId', ''); }} disabled={!draft.department}><option value="">Choose work type</option>{taskTypes.map((type) => <option key={type} value={type}>{pretty(type)}</option>)}</select></Field><Field label="Severity (1 lowest · 10 highest)" error={fieldErrors.severity}><select value={draft.severity} onChange={(event) => update('severity', event.target.value)}>{Array.from({ length: 10 }, (_, index) => index + 1).map((level) => <option key={level} value={level}>{level}{level >= 9 ? ' · critical' : level >= 7 ? ' · high' : level >= 4 ? ' · medium' : ' · low'}</option>)}</select></Field>{selectedTaskType && <Field label={`Asset (${pretty(selectedTaskType.assetType)})`} error={fieldErrors.assetId}><select value={draft.assetId} onChange={(event) => update('assetId', event.target.value)} disabled={candidateAssets.length === 0}><option value="">{candidateAssets.length === 1 ? `${candidateAssets[0].assetId} (resolved automatically)` : 'Choose asset'}</option>{candidateAssets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.name ? `${asset.name} (${asset.assetId})` : asset.assetId}</option>)}</select>{assetsQuery.isLoading && <span className="mt-1 block text-xs font-normal text-[var(--text-muted)]" role="status">Loading asset inventory…</span>}{!assetsQuery.isLoading && candidateAssets.length === 0 && <span className="mt-1 block text-xs font-normal text-[var(--text-secondary)]">No {pretty(selectedTaskType.assetType)} asset is mapped on {draft.sectionId || 'this section'} {draft.track}.</span>}{candidateAssets.length === 1 && <span className="mt-1 block text-xs font-normal text-[var(--text-secondary)]">One candidate on this section and track; the server resolves it.</span>}</Field>}</div>}
 
             {step.id === 'block' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Estimated duration (minutes)" error={fieldErrors.estimatedDuration}><input type="number" min={minDuration || 1} value={draft.estimatedDuration} onChange={(event) => update('estimatedDuration', event.target.value)} aria-describedby={minDuration > 0 ? 'duration-floor' : undefined} />{minDuration > 0 && <span id="duration-floor" className="mt-1 block text-xs font-normal text-[var(--text-secondary)]">{pretty(draft.taskType)} needs a minimum block of {minDuration} minutes (HC-002).</span>}</Field><Field label="Block requirement" error={fieldErrors.blockType}><select value={draft.blockType} onChange={(event) => update('blockType', event.target.value)}><option value="TRAFFIC">Traffic block</option><option value="POWER">Power block / PTW</option><option value="INTEGRATED">Integrated traffic + power</option><option value="DISCONNECTION">S&T disconnection / T-351</option></select></Field><p className="sm:col-span-2 rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs text-[var(--text-secondary)]">{draft.department === 'SNT' ? 'S&T work will carry the required T/351 and correspondence-test flags.' : draft.department === 'TRD' ? 'TRD work will carry PTW and OHE isolation requirements.' : 'Block Finder will retain all resulting safety warnings; submission does not approve a possession.'}</p></div>}
 
@@ -312,7 +337,7 @@ function StructuredPreview({ draft, onEdit }: { draft: TicketDraft; onEdit: (ste
   const rows: Array<{ label: string; value: string; step: ComposerStep }> = [
     { label: 'Department', value: pretty(draft.department), step: 'department' },
     { label: 'Location', value: draft.sectionId ? `${draft.sectionId} · ${draft.track} · km ${draft.kmStart || '?'}–${draft.kmEnd || '?'}` : 'Not set', step: 'location' },
-    { label: 'Work', value: draft.taskType ? `${pretty(draft.taskType)} · severity ${draft.severity}` : 'Not set', step: 'work' },
+    { label: 'Work', value: draft.taskType ? `${pretty(draft.taskType)} · severity ${draft.severity}${draft.assetId ? ` · ${draft.assetId}` : ''}` : 'Not set', step: 'work' },
     { label: 'Block need', value: draft.estimatedDuration ? `${draft.estimatedDuration} min · ${pretty(draft.blockType)}` : 'Not set', step: 'block' },
     { label: 'Requested window', value: draft.requestedStart && draft.requestedEnd ? `${draft.requestedStart.replace('T', ' ')} → ${draft.requestedEnd.replace('T', ' ')}` : 'Not set', step: 'window' },
   ];

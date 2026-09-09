@@ -123,6 +123,10 @@ class TicketApiTests(unittest.TestCase):
         self.assertEqual(by_type["TAMPING"]["department"], "ENGG")
         self.assertEqual(by_type["OHE_INSPECTION"]["minDurationMinutes"], 120)
         self.assertTrue(by_type["POINT_MACHINE_MAINT"]["requiresT351"])
+        # The composer picks the asset list off this: point work is identified
+        # by a POINT, plain track work by the track section itself.
+        self.assertEqual(by_type["POINT_MACHINE_MAINT"]["assetType"], "POINT")
+        self.assertEqual(by_type["TAMPING"]["assetType"], "TRACK_SECTION")
 
     def test_short_duration_error_names_the_floor_in_prose(self):
         response = self.client.post(
