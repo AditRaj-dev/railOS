@@ -383,6 +383,14 @@ class Repository:
             )
         }
 
+        # Seed realistic demo tickets, work steps, and field evidence
+        try:
+            from .demo_seed import seed_all_demo_data
+            from .evidence_routes import object_store, verification_service
+            seed_all_demo_data(self, object_store, verification_service)
+        except Exception:
+            pass
+
         self.emit("DEMO_RESET", "demo", {
             "tasks": len(self.tasks), "defects": len(self.defects),
             "movements": len(self.trains), "windows": len(self.windows),
@@ -986,6 +994,14 @@ def reset(_:User=Depends(allow("ADMIN"))):
     counts={"tasks":len(state.tasks),"defects":len(state.defects),"movements":len(state.trains),"windows":len(state.windows),
         "critical":sum(t.severity>=9 for t in state.tasks.values()),"overdue":sum(t.overdueDays>0 for t in state.tasks.values())}
     return {"status":"reset","counts":counts,"synthetic":True}
+
+@app.post("/api/v1/demo/seed")
+def seed_demo(_:User=Depends(allow("ADMIN", "CONTROL_OFFICER", "PLANNER"))):
+    from .demo_seed import seed_all_demo_data
+    from .evidence_routes import object_store, verification_service
+    summary = seed_all_demo_data(state, object_store, verification_service)
+    state.commit()
+    return {"status":"seeded","summary":summary,"synthetic":True}
 
 @app.get("/api/v1/corridors")
 def corridors(_:User=Depends(auth)): return listed(state.corridors)

@@ -1111,3 +1111,29 @@ export async function updateSupervisorAreas(
     body: JSON.stringify({ sectionCodes }),
   });
 }
+
+export async function simulateEvidenceUpload(payload: {
+  taskId: string;
+  stepId?: string;
+  kind?: 'PHOTO' | 'VIDEO';
+  scenario?: 'COMPLIANT' | 'FLAGGED_GPS' | 'FLAGGED_ACCURACY';
+  exceptionReason?: string;
+  mediaBase64?: string;
+}): Promise<{ evidence: EvidenceRecord; manifest: Record<string, unknown> }> {
+  return fetchApi<{ evidence: EvidenceRecord; manifest: Record<string, unknown> }>(
+    '/api/v1/evidence/demo-upload',
+    {
+      method: 'POST',
+      headers: { 'X-RailOS-Role': 'FIELD_SUPERVISOR' },
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function seedDemoData(): Promise<{ ok: boolean; counts: Record<string, number> }> {
+  return fetchApi<{ ok: boolean; counts: Record<string, number> }>('/api/v1/demo/seed', {
+    method: 'POST',
+    headers: { 'X-RailOS-Role': 'ADMIN' },
+  });
+}
+

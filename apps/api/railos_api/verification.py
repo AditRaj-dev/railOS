@@ -63,9 +63,10 @@ class EvidenceVerificationService:
         km_post: str = "",
         location_samples: list[GeoSample] | None = None,
         device_info: dict[str, Any] | None = None,
+        signed_at_utc: str | None = None,
     ) -> tuple[EvidenceItem, EvidenceManifestV1]:
         """Perform authoritative server verification of evidence items."""
-        now_utc = datetime.now(timezone.utc).isoformat()
+        now_utc = signed_at_utc or datetime.now(timezone.utc).isoformat()
         flag_reasons: list[str] = []
 
         # 1. Fetch media objects and recalculate hashes
@@ -171,7 +172,8 @@ class EvidenceVerificationService:
             clientCreatedTimeUtc=item.captureTimeUtc,
         )
 
-        signed_manifest = self.signer.sign_manifest(unsigned_manifest)
+        parsed_signed_at = datetime.fromisoformat(now_utc) if now_utc else None
+        signed_manifest = self.signer.sign_manifest(unsigned_manifest, signed_at_utc=parsed_signed_at)
 
         # 7. Update item properties
         updated_item = item.model_copy(
@@ -183,7 +185,7 @@ class EvidenceVerificationService:
                 "proofSizeBytes": signed_manifest.proofSizeBytes,
                 "distanceToTargetMeters": distance_m,
                 "geoVerdict": verdict,
-                "reviewNotes": review_notes,
+                "reviewNotes": "; ".join(flag_reasons) if flag_reasons else item.reviewNotes,
                 "canonicalManifest": signed_manifest,
                 "ed25519Signature": signed_manifest.serverSignature,
                 "updatedTimeUtc": now_utc,

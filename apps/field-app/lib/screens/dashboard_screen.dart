@@ -497,8 +497,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             borderRadius: BorderRadius.circular(
                               RailOSTokens.borderRadiusMd,
                             ),
-                            onTap: () {
-                              Navigator.push(
+                            onTap: () async {
+                              // Come back to the server's view of the task,
+                              // not the list we walked in with: a capture or a
+                              // completion confirmed inside changes it.
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => TaskDetailScreen(
@@ -508,6 +511,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   ),
                                 ),
                               );
+                              await _loadTasks();
                             },
                             child: Padding(
                               padding: const EdgeInsets.all(

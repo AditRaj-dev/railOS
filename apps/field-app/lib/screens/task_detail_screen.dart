@@ -24,6 +24,8 @@ class TaskDetailScreen extends StatefulWidget {
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   late List<WorkStep> _steps;
+  bool _isConfirming = false;
+  bool _confirmed = false;
 
   @override
   void initState() {
@@ -50,6 +52,66 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
             : WorkExecutionStatus.completedPendingEvidence;
         step.evidenceId = result.evidenceId;
       });
+    }
+  }
+
+  /// Capturing evidence proves the work; it does not declare it finished.
+  /// Without this the task stayed PENDING on the server and the dashboard
+  /// showed the same list again, which read as "nothing happened".
+  Future<void> _confirmComplete() async {
+    final taskId = widget.task['taskId'] as String? ?? '';
+    setState(() => _isConfirming = true);
+    try {
+      final result = await widget.apiClient.updateWorkStatus(
+        assignmentId: taskId,
+        executionStatus: 'COMPLETED',
+        taskStatus: 'COMPLETED',
+        note: 'Confirmed on handset after all macro steps were captured.',
+        possessionId: widget.task['possessionId'] as String?,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isConfirming = false;
+        _confirmed = true;
+      });
+      final queued = result['queued'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            queued
+                ? '$taskId completion saved on this device for replay.'
+                : '$taskId marked complete.',
+          ),
+          backgroundColor: queued
+              ? RailOSTokens.status_caution_bg
+              : RailOSTokens.status_ok_bg,
+        ),
+      );
+      if (!queued && mounted) Navigator.pop(context, true);
+    } on RailOSApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isConfirming = false);
+      // A task only gains a runtime assignment once a planner approves the
+      // block plan that carries it. Saying "404" here would send a supervisor
+      // hunting for a fault on the handset.
+      final message = error.code == 'NOT_FOUND'
+          ? '$taskId has no runtime assignment yet. It needs an approved block plan before work can be confirmed.'
+          : '${error.code}: ${error.message}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: RailOSTokens.status_critical_bg,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _isConfirming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not confirm completion: $error'),
+          backgroundColor: RailOSTokens.status_critical_bg,
+        ),
+      );
     }
   }
 
@@ -341,21 +403,58 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     ),
                   ),
                 ),
-                child: const Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      color: RailOSTokens.status_ok_fg,
-                      size: 20,
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline,
+                          color: RailOSTokens.status_ok_fg,
+                          size: 20,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'All Macro Steps & Final Video Captured and Verified!',
+                            style: TextStyle(
+                              color: RailOSTokens.status_ok_text,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'All Macro Steps & Final Video Captured and Verified!',
-                        style: TextStyle(
-                          color: RailOSTokens.status_ok_text,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: RailOSTokens.minTouchTargetDp,
+                      child: ElevatedButton.icon(
+                        onPressed: _isConfirming || _confirmed
+                            ? null
+                            : _confirmComplete,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: RailOSTokens.accent,
+                          foregroundColor: RailOSTokens.bg_canvas,
+                          disabledBackgroundColor: RailOSTokens.bg_elevated,
+                        ),
+                        icon: _isConfirming
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: RailOSTokens.bg_canvas,
+                                ),
+                              )
+                            : const Icon(Icons.task_alt, size: 18),
+                        label: Text(
+                          _confirmed
+                              ? 'Work confirmed complete'
+                              : _isConfirming
+                              ? 'Confirming…'
+                              : 'Confirm work complete',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),

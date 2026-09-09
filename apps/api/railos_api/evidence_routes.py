@@ -765,3 +765,153 @@ def preview_media(key: str = Query(...)):
         except KeyError:
             raise HTTPException(404, {"code": "MEDIA_NOT_FOUND", "message": "Media not found"})
     raise HTTPException(400, {"code": "NOT_SUPPORTED", "message": "Use presigned S3 URLs in production"})
+
+
+class DemoEvidenceUploadRequest(AuthDTO):
+    task_id: str = "ENG-1001"
+    step_id: str | None = None
+    kind: EvidenceKind = EvidenceKind.PHOTO
+    scenario: str = "COMPLIANT"  # COMPLIANT, FLAGGED_GPS, FLAGGED_ACCURACY
+    exception_reason: str | None = None
+    media_base64: str | None = None
+
+
+@router.post("/api/v1/evidence/demo-upload")
+def demo_upload_evidence(
+    req: DemoEvidenceUploadRequest,
+    current_user: UserAccount = Depends(get_current_user),
+):
+    """Simulate a complete field capture, multipart upload, and verification cycle.
+
+    Enables instant field upload demonstration from the web control center or CLI.
+    """
+    from .main import state
+    from .demo_seed import SAMPLE_JPEG_TRACK, SAMPLE_MP4_WALKTHROUGH
+
+    task = state.tasks.get(req.task_id)
+    if not task:
+        raise HTTPException(404, {"code": "TASK_NOT_FOUND", "message": f"Task {req.task_id} not found"})
+
+    steps = _steps_for_task(state, req.task_id)
+    target_step = next((s for s in steps if s.stepId == req.step_id), None) if req.step_id else (steps[0] if steps else None)
+
+    if not target_step:
+        target_step = WorkStep(
+            stepId=f"stp-{req.task_id}-demo",
+            taskId=req.task_id,
+            stepIndex=1,
+            title="Live Field Execution & Clearance Proof",
+            description="Geotagged photographic verification of task completion.",
+            requiresPhoto=req.kind == EvidenceKind.PHOTO,
+            requiresVideo=req.kind == EvidenceKind.VIDEO,
+            targetLatitude=28.6140,
+            targetLongitude=77.5030,
+            targetRadiusMeters=100.0,
+            status=WorkExecutionStatus.READY,
+        )
+        with state.transaction():
+            state.work_steps[target_step.stepId] = target_step
+
+    target_lat = target_step.targetLatitude
+    target_lon = target_step.targetLongitude
+    target_radius = target_step.targetRadiusMeters
+
+    scenario_upper = req.scenario.upper()
+    if scenario_upper == "FLAGGED_GPS":
+        # ~147m distance: outside 100m radius
+        start_lat = target_lat + 0.0011
+        start_lon = target_lon + 0.0009
+        gps_accuracy = 12.0
+        reason = req.exception_reason or "Track obstruction or terrain prevented closer standoff; photo captured from authorized access path."
+    elif scenario_upper == "FLAGGED_ACCURACY":
+        start_lat = target_lat + 0.00003
+        start_lon = target_lon + 0.00003
+        gps_accuracy = 65.0  # > 50m limit
+        reason = req.exception_reason or "Dense tree canopy degraded GPS satellite geometry (accuracy 65m > 50m threshold)."
+    else:  # COMPLIANT
+        start_lat = target_lat + 0.00004
+        start_lon = target_lon + 0.00004
+        gps_accuracy = 6.0
+        reason = req.exception_reason
+
+    # Resolve media bytes
+    if req.media_base64:
+        try:
+            media_bytes = base64.b64decode(req.media_base64)
+        except Exception as exc:
+            raise HTTPException(400, {"code": "INVALID_IMAGE_DATA", "message": "Failed to decode base64 media payload"}) from exc
+    elif req.kind == EvidenceKind.VIDEO:
+        media_bytes = SAMPLE_MP4_WALKTHROUGH
+    else:
+        media_bytes = SAMPLE_JPEG_TRACK
+
+    content_type = "video/mp4" if req.kind == EvidenceKind.VIDEO else "image/jpeg"
+    sha256_hash = compute_sha256_bytes(media_bytes)
+    evidence_id = f"018e{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:4]}-7000-8000-{uuid.uuid4().hex[:12]}"
+    storage_key = f"evidence/{req.task_id}/{target_step.stepId}/{evidence_id}/proof"
+
+    # Store media in object store
+    try:
+        object_store.put_object_bytes(storage_key, media_bytes, content_type)
+    except Exception as exc:
+        raise HTTPException(500, {"code": "STORAGE_ERROR", "message": f"Failed to store media: {exc}"}) from exc
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    raw_item = EvidenceItem(
+        evidenceId=evidence_id,
+        taskId=req.task_id,
+        stepId=target_step.stepId,
+        supervisorId=current_user.user_id,
+        kind=req.kind,
+        status=EvidenceStatus.UPLOADING,
+        originalStorageKey=storage_key,
+        proofStorageKey=storage_key,
+        originalSha256=sha256_hash,
+        proofSha256=sha256_hash,
+        originalSizeBytes=len(media_bytes),
+        proofSizeBytes=len(media_bytes),
+        captureTimeUtc=now_iso,
+        startLatitude=start_lat,
+        startLongitude=start_lon,
+        gpsAccuracyMeters=gps_accuracy,
+        geoVerdict=GeoVerdict.WITHIN_RADIUS,
+        exceptionReason=reason,
+        createdTimeUtc=now_iso,
+        updatedTimeUtc=now_iso,
+    )
+
+    # Run verification pipeline
+    verified_item, _ = verification_service.verify_evidence(
+        item=raw_item,
+        target_lat=target_lat,
+        target_lon=target_lon,
+        target_radius_m=target_radius,
+        section_code=task.sectionId or "SEC_GZB_DER",
+    )
+
+    with state.transaction():
+        state.evidence_items[evidence_id] = verified_item
+        if verified_item.status == EvidenceStatus.VERIFIED:
+            target_step.status = WorkExecutionStatus.COMPLETED
+            target_step.evidenceId = evidence_id
+            state.emit(
+                "TASK_STEP_COMPLETED",
+                target_step.stepId,
+                target_step.model_dump(by_alias=True, mode="json"),
+                actor=current_user.user_id,
+            )
+        elif verified_item.status == EvidenceStatus.FLAGGED_REVIEW:
+            target_step.status = WorkExecutionStatus.COMPLETED_PENDING_EVIDENCE
+            target_step.evidenceId = evidence_id
+            state.emit(
+                "EVIDENCE_FLAGGED",
+                evidence_id,
+                verified_item.model_dump(by_alias=True, mode="json"),
+                actor=current_user.user_id,
+                reason=verified_item.reviewNotes or "Geospatial discrepancy detected",
+            )
+
+    res = verified_item.model_dump(by_alias=True, mode="json")
+    res["proofDownloadUrl"] = object_store.generate_presigned_download_url(storage_key)
+    return res
+
